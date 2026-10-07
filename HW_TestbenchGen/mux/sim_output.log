@@ -1,0 +1,22 @@
+Test 1: a=0 b=0 sel=0
+  ✓ y: expected 0, got 0
+Test 2: a=0 b=0 sel=1
+  ✓ y: expected 0, got 0
+Test 3: a=0 b=1 sel=0
+  ✓ y: expected 0, got 0
+Test 4: a=0 b=1 sel=1
+  ✓ y: expected 1, got 1
+Test 5: a=1 b=0 sel=0
+  ✓ y: expected 1, got 1
+Test 6: a=1 b=0 sel=1
+  ✓ y: expected 0, got 0
+Test 7: a=1 b=1 sel=0
+  ✓ y: expected 1, got 1
+Test 8: a=1 b=1 sel=1
+  ✓ y: expected 1, got 1
+-------------------------------------------------
+Test Summary:
+  Total tests run:           8
+  Passed:           8
+  Failed:           0
+LLM-aided-Testbench-Generation/examples/output/mux/testbench_final.v:122: $finish called at 88000 (1ps)

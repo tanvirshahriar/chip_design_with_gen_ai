@@ -1,0 +1,68 @@
+Test 1: a=0000 b=0000
+  ✓ sum=0000 (expected 0000)
+  ✓ carry=0 (expected 0)
+Test 2: a=1111 b=0000
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 3: a=0000 b=1111
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 4: a=1111 b=1111
+  ✓ sum=1110 (expected 1110)
+  ✓ carry=1 (expected 1)
+Test 5: a=1000 b=1000
+  ✓ sum=0000 (expected 0000)
+  ✓ carry=1 (expected 1)
+Test 6: a=1000 b=0111
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 7: a=0111 b=0111
+  ✓ sum=1110 (expected 1110)
+  ✓ carry=0 (expected 0)
+Test 8: a=0001 b=1110
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 9: a=0011 b=0101
+  ✓ sum=1000 (expected 1000)
+  ✓ carry=0 (expected 0)
+Test 10: a=0010 b=1101
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 11: a=1001 b=0110
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 12: a=0100 b=1011
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 13: a=1100 b=0011
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 14: a=0101 b=1010
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 15: a=0000 b=0111
+  ✓ sum=0111 (expected 0111)
+  ✓ carry=0 (expected 0)
+Test 16: a=1111 b=0001
+  ✓ sum=0000 (expected 0000)
+  ✓ carry=1 (expected 1)
+Test 17: a=0110 b=1001
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 18: a=1110 b=0010
+  ✓ sum=0000 (expected 0000)
+  ✓ carry=1 (expected 1)
+Test 19: a=1011 b=0100
+  ✓ sum=1111 (expected 1111)
+  ✓ carry=0 (expected 0)
+Test 20: a=1101 b=0000
+  ✓ sum=1101 (expected 1101)
+  ✓ carry=0 (expected 0)
+====================================
+Test Summary:
+  Total checks: 40
+  Passed: 40
+  Failed: 0
+  All tests passed!
+====================================
+LLM-aided-Testbench-Generation/examples/output/adder/testbench_final.v:437: $finish called at 200000 (1ps)

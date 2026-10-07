@@ -1,0 +1,162 @@
+[
+  {
+    "a": 0,
+    "b": 0,
+    "expected_outputs": {
+      "sum": 0,
+      "sat": 0
+    }
+  },
+  {
+    "a": 255,
+    "b": 0,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 0
+    }
+  },
+  {
+    "a": 0,
+    "b": 255,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 0
+    }
+  },
+  {
+    "a": 255,
+    "b": 255,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 1
+    }
+  },
+  {
+    "a": 128,
+    "b": 127,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 0
+    }
+  },
+  {
+    "a": 254,
+    "b": 1,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 0
+    }
+  },
+  {
+    "a": 128,
+    "b": 128,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 1
+    }
+  },
+  {
+    "a": 255,
+    "b": 1,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 1
+    }
+  },
+  {
+    "a": 100,
+    "b": 100,
+    "expected_outputs": {
+      "sum": 200,
+      "sat": 0
+    }
+  },
+  {
+    "a": 50,
+    "b": 50,
+    "expected_outputs": {
+      "sum": 100,
+      "sat": 0
+    }
+  },
+  {
+    "a": 200,
+    "b": 20,
+    "expected_outputs": {
+      "sum": 220,
+      "sat": 0
+    }
+  },
+  {
+    "a": 150,
+    "b": 100,
+    "expected_outputs": {
+      "sum": 250,
+      "sat": 0
+    }
+  },
+  {
+    "a": 150,
+    "b": 110,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 1
+    }
+  },
+  {
+    "a": 200,
+    "b": 100,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 1
+    }
+  },
+  {
+    "a": 10,
+    "b": 240,
+    "expected_outputs": {
+      "sum": 250,
+      "sat": 0
+    }
+  },
+  {
+    "a": 10,
+    "b": 250,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 1
+    }
+  },
+  {
+    "a": 127,
+    "b": 127,
+    "expected_outputs": {
+      "sum": 254,
+      "sat": 0
+    }
+  },
+  {
+    "a": 127,
+    "b": 128,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 0
+    }
+  },
+  {
+    "a": 64,
+    "b": 192,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 1
+    }
+  },
+  {
+    "a": 200,
+    "b": 55,
+    "expected_outputs": {
+      "sum": 255,
+      "sat": 0
+    }
+  }
+]
