@@ -1,6 +1,6 @@
 # Chip Design with Generative AI
 
-Homework for the **LLM4ChipDesign** course (GenAI-based chip design), by Tanvir Shahriar.
+Homework for the **LLM4ChipDesign** course (GenAI-based chip design).
 Each folder holds one assignment: an executed Colab notebook, the generated Verilog, logs, and a report.
 
 All assignments use `nvidia/nemotron-3-super-120b-a12b` through NVIDIA's OpenAI-compatible API, and
