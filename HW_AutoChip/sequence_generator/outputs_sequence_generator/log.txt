@@ -1,0 +1,106 @@
+system: You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     
+user: // I am trying to create a Verilog model for a sequence generator. It must meet the following specifications:
+//	- Inputs:
+//		- Clock
+//		- Active-low reset
+//		- Enable
+//	- Outputs:
+//		- Data (8 bits)
+//
+// While enabled, it should generate an output sequence of the following hexadecimal values and then repeat:
+//	- 0xAF
+//	- 0xBC
+//	- 0xE2
+//	- 0x78
+//	- 0xFF
+//	- 0xE2
+//	- 0x0B
+//	- 0x8D
+//
+// How would I write a design that meets these specifications?
+
+module sequence_generator(
+	input clk,
+	input reset_n,
+	input enable,
+	output [7:0] data
+);
+
+assistant: module sequence_generator(
+    input  clk,
+    input  reset_n,   // active-low reset
+    input  enable,
+    output reg [7:0] data
+);
+
+    // 3-bit counter to index the 8‑element sequence
+    reg [2:0] idx;
+
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            // Asynchronous reset: start at first value and index 0
+            idx   <= 3'd0;
+            data  <= 8'hAF;
+        end
+        else if (enable) begin
+            // Output the value corresponding to the current index
+            case (idx)
+                3'd0: data <= 8'hAF;
+                3'd1: data <= 8'hBC;
+                3'd2: data <= 8'hE2;
+                3'd3: data <= 8'h78;
+                3'd4: data <= 8'hFF;
+                3'd5: data <= 8'hE2;
+                3'd6: data <= 8'h0B;
+                3'd7: data <= 8'h8D;
+            endcase
+            // Advance to the next index (wrap around after 7)
+            idx <= idx + 3'd1;
+        end
+        // If enable is low, hold the current output and index
+    end
+
+endmodule
+
+
+Time to Generate: 22.019333600997925
+Best ranked response at iteration 0 with response number 1
+Rank of best response: 1.0
+Best response module:
+module sequence_generator(
+    input  clk,
+    input  reset_n,   // active-low reset
+    input  enable,
+    output reg [7:0] data
+);
+
+    // 3-bit counter to index the 8‑element sequence
+    reg [2:0] idx;
+
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            // Asynchronous reset: start at first value and index 0
+            idx   <= 3'd0;
+            data  <= 8'hAF;
+        end
+        else if (enable) begin
+            // Output the value corresponding to the current index
+            case (idx)
+                3'd0: data <= 8'hAF;
+                3'd1: data <= 8'hBC;
+                3'd2: data <= 8'hE2;
+                3'd3: data <= 8'h78;
+                3'd4: data <= 8'hFF;
+                3'd5: data <= 8'hE2;
+                3'd6: data <= 8'h0B;
+                3'd7: data <= 8'h8D;
+            endcase
+            // Advance to the next index (wrap around after 7)
+            idx <= idx + 3'd1;
+        end
+        // If enable is low, hold the current output and index
+    end
+
+endmodule
+
+

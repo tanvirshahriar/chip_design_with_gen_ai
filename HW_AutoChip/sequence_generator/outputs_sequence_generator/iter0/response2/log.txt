@@ -1,0 +1,59 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for a sequence generator. It must meet the following specifications:\n//\t- Inputs:\n//\t\t- Clock\n//\t\t- Active-low reset\n//\t\t- Enable\n//\t- Outputs:\n//\t\t- Data (8 bits)\n//\n// While enabled, it should generate an output sequence of the following hexadecimal values and then repeat:\n//\t- 0xAF\n//\t- 0xBC\n//\t- 0xE2\n//\t- 0x78\n//\t- 0xFF\n//\t- 0xE2\n//\t- 0x0B\n//\t- 0x8D\n//\n// How would I write a design that meets these specifications?\n\nmodule sequence_generator(\n\tinput clk,\n\tinput reset_n,\n\tinput enable,\n\toutput [7:0] data\n);\n'}
+{role : 'assistant', content : '```verilog
+module sequence_generator (
+    input  wire        clk,
+    input  wire        reset_n,   // active-low reset
+    input  wire        enable,
+    output reg  [7:0]  data
+);
+
+    // Sequence to be generated (hex values)
+    localparam [7:0] SEQ0 = 8'hAF;
+    localparam [7:0] SEQ1 = 8'hBC;
+    localparam [7:0] SEQ2 = 8'hE2;
+    localparam [7:0] SEQ3 = 8'h78;
+    localparam [7:0] SEQ4 = 8'hFF;
+    localparam [7:0] SEQ5 = 8'hE2;
+    localparam [7:0] SEQ6 = 8'h0B;
+    localparam [7:0] SEQ7 = 8'h8D;
+
+    // ROM holding the sequence
+    reg [7:0] seq [0:7];
+    initial begin
+        seq[0] = SEQ0;
+        seq[1] = SEQ1;
+        seq[2] = SEQ2;
+        seq[3] = SEQ3;
+        seq[4] = SEQ4;
+        seq[5] = SEQ5;
+        seq[6] = SEQ6;
+        seq[7] = SEQ7;
+    end
+
+    // 3-bit counter to index the sequence
+    reg [2:0] idx;
+
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            idx   <= 3'd0;
+            data  <= seq[0];
+        end else if (enable) begin
+            // advance to next value, wrap around after the last element
+            idx   <= idx + 3'd1;
+            data  <= seq[idx + 3'd1]; // output the next value immediately
+        end else begin
+            // hold current output when enable is low
+            data  <= data;
+        end
+    end
+
+endmodule
+```'}
+
+ Iteration rank: 0.0
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

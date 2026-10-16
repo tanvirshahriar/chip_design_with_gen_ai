@@ -1,0 +1,14 @@
+{
+    "general": {
+        "prompt": "./traffic_light.sv",
+        "name": "traffic_light_fsm",
+        "testbench": "./traffic_light_tb.sv",
+        "model_family": "ChatGPT",
+        "model_id": "nvidia/nemotron-3-super-120b-a12b",
+        "num_candidates": 5,
+        "iterations": 5,
+        "outdir": "outputs_traffic_light",
+        "log": "log.txt",
+        "ensemble": false
+    }
+}

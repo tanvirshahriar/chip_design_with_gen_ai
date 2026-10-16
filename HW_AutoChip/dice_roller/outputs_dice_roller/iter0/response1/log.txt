@@ -1,0 +1,48 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for a simulated dice roller. It must meet the following specifications:\n//    - Inputs:\n//        - Clock\n//        - Active-low reset\n//        - Die select (2-bits)\n//        - Roll\n//    - Outputs:\n//        - Rolled number (up to 8-bits)\n//\n// The design should simulate rolling either a 4-sided, 6-sided, 8-sided, or 20-sided die, based on the input die select. It should roll when the roll input goes high and output the random number based on the number of sides of the selected die.\n//\n// How would I write a design that meets these specifications?\n\nmodule dice_roller(\n\tinput clk,\n\tinput rst_n,\n\tinput [1:0] die_select,\n\tinput roll,\n\toutput [7:0] rolled_number\n);\n'}
+{role : 'assistant', content : '```verilog
+module dice_roller(
+    input        clk,
+    input        rst_n,   // active-low reset
+    input [1:0]  die_select,
+    input        roll,
+    output [7:0] rolled_number
+);
+    // LFSR for pseudo‑random number generation (8-bit, polynomial x^8 + x^6 + x^5 + x^4 + 1)
+    reg [7:0] lfsr;
+    // Registered output to avoid glitches
+    reg [7:0] rolled_number_reg;
+
+    // Asynchronous active‑low reset
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            lfsr        <= 8'hA5;        // non‑zero seed
+            rolled_number_reg <= 8'd0;
+        end else begin
+            if (roll) begin
+                // Update LFSR each clock while roll is asserted
+                lfsr <= {lfsr[6:0],
+                         lfsr[7] ^ lfsr[5] ^ lfsr[4] ^ lfsr[3]};
+                // Compute the rolled value based on the selected die
+                case (die_select)
+                    2'b00: rolled_number_reg <= (lfsr % 4)  + 1;  // d4
+                    2'b01: rolled_number_reg <= (lfsr % 6)  + 1;  // d6
+                    2'b10: rolled_number_reg <= (lfsr % 8)  + 1;  // d8
+                    2'b11: rolled_number_reg <= (lfsr % 20) + 1;  // d20
+                    default: rolled_number_reg <= 8'd0;
+                endcase
+            end
+            // If roll is low, hold the last value (no change)
+        end
+    end
+
+    assign rolled_number = rolled_number_reg;
+endmodule
+```'}
+
+ Iteration rank: 1.0
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

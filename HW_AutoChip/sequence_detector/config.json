@@ -1,0 +1,14 @@
+{
+    "general": {
+        "prompt": "./sequence_detector.sv",
+        "name": "sequence_detector",
+        "testbench": "./sequence_detector_tb.sv",
+        "model_family": "ChatGPT",
+        "model_id": "nvidia/nemotron-3-super-120b-a12b",
+        "num_candidates": 5,
+        "iterations": 5,
+        "outdir": "outputs_sequence_detector",
+        "log": "log.txt",
+        "ensemble": false
+    }
+}

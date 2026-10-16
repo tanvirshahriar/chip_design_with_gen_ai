@@ -1,0 +1,81 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for a traffic light state machine. It must meet the following specifications:\n//    - Inputs:\n//        - Clock\n//        - Active-low reset\n//        - Enable\n//    - Outputs:\n//        - Red\n//        - Yellow\n//        - Green\n//\n// The state machine should reset to a red light, change from red to green after 32 clock cycles, change from green to yellow after 20 clock cycles, and then change from yellow to red after 7 clock cycles.\n//\n// How would I write a design that meets these specifications?\n\nmodule traffic_light_fsm(\n\tinput clk,\n\tinput reset_n,\n\tinput enable,\n\toutput red,\n\toutput yellow,\n\toutput green\n);\n'}
+{role : 'assistant', content : '```verilog
+module traffic_light_fsm(
+    input        clk,
+    input        reset_n,   // active‑low reset
+    input        enable,
+    output reg   red,
+    output reg   yellow,
+    output reg   green
+);
+
+    // State encoding
+    typedef enum logic [1:0] {
+        RED   = 2'b00,
+        GREEN = 2'b01,
+        YELLOW= 2'b10
+    } state_t;
+
+    state_t state, next_state;
+
+    // Timing constants (number of clock cycles to stay in each state)
+    localparam integer RED_TIME   = 32;
+    localparam integer GREEN_TIME = 20;
+    localparam integer YELLOW_TIME = 7;
+
+    // Counter that tracks how many cycles we have been in the current state
+    reg [$clog2(RED_TIME)-1:0] count; // width big enough for the largest timeout
+
+    // Next‑state logic (combinational)
+    always_comb begin
+        // Default: stay in current state
+        next_state = state;
+
+        case (state)
+            RED:   if (enable && count == RED_TIME-1)   next_state = GREEN;
+            GREEN: if (enable && count == GREEN_TIME-1) next_state = YELLOW;
+            YELLOW:if (enable && count == YELLOW_TIME-1)next_state = RED;
+        endcase
+    end
+
+    // State register and counter update (sequential)
+    always_ff @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            state  <= RED;
+            count  <= 0;
+            red    <= 1'b1;
+            yellow <= 1'b0;
+            green  <= 1'b0;
+        end else begin
+            state  <= next_state;
+
+            // Update counter only when enabled
+            if (enable) begin
+                if (count == (state == RED   ? RED_TIME-1   :
+                              state == GREEN ? GREEN_TIME-1 :
+                              state == YELLOW? YELLOW_TIME-1 : 0))
+                    count <= 0; // reset counter when we are about to change state
+                else
+                    count <= count + 1;
+            end else begin
+                // When enable is low, hold the current state and counter
+                count <= count;
+            end
+
+            // Output logic (registered for glitch‑free outputs)
+            red    <= (state == RED);
+            yellow <= (state == YELLOW);
+            green  <= (state == GREEN);
+        end
+    end
+
+endmodule
+```'}
+
+ Iteration rank: 0.25
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

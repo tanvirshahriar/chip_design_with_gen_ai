@@ -1,0 +1,97 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for a traffic light state machine. It must meet the following specifications:\n//    - Inputs:\n//        - Clock\n//        - Active-low reset\n//        - Enable\n//    - Outputs:\n//        - Red\n//        - Yellow\n//        - Green\n//\n// The state machine should reset to a red light, change from red to green after 32 clock cycles, change from green to yellow after 20 clock cycles, and then change from yellow to red after 7 clock cycles.\n//\n// How would I write a design that meets these specifications?\n\nmodule traffic_light_fsm(\n\tinput clk,\n\tinput reset_n,\n\tinput enable,\n\toutput red,\n\toutput yellow,\n\toutput green\n);\n'}
+{role : 'assistant', content : '```verilog
+module traffic_light_fsm(
+    input  clk,
+    input  reset_n,   // active-low reset
+    input  enable,
+    output reg red,
+    output reg yellow,
+    output reg green
+);
+    // State encoding
+    localparam [1:0] RED   = 2'b00,
+                     GREEN = 2'b01,
+                     YELLOW= 2'b10;
+
+    // State registers
+    reg [1:0] state, next_state;
+    // Counter registers (enough to hold up to 31)
+    reg [5:0] cnt, next_cnt;
+
+    // Sequential logic: state and counter updates
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            state  <= RED;
+            cnt    <= 6'd0;
+        end else if (enable) begin
+            state  <= next_state;
+            cnt    <= next_cnt;
+        end else begin
+            // Hold current state and counter when enable is low
+            state  <= state;
+            cnt    <= cnt;
+        end
+    end
+
+    // Combinational logic: next state and next counter
+    always @* begin
+        // Defaults: hold state and counter
+        next_state = state;
+        next_cnt   = cnt;
+
+        case (state)
+            RED: begin
+                if (enable) begin
+                    if (cnt == 6'd31) begin   // 32 cycles elapsed
+                        next_state = GREEN;
+                        next_cnt   = 6'd0;
+                    end else begin
+                        next_cnt = cnt + 1'd1;
+                    end
+                end
+            end
+            GREEN: begin
+                if (enable) begin
+                    if (cnt == 6'd19) begin   // 20 cycles elapsed
+                        next_state = YELLOW;
+                        next_cnt   = 6'd0;
+                    end else begin
+                        next_cnt = cnt + 1'd1;
+                    end
+                end
+            end
+            YELLOW: begin
+                if (enable) begin
+                    if (cnt == 6'd6) begin    // 7 cycles elapsed
+                        next_state = RED;
+                        next_cnt   = 6'd0;
+                    end else begin
+                        next_cnt = cnt + 1'd1;
+                    end
+                end
+            end
+            default: begin
+                // Should never happen
+                next_state = RED;
+                next_cnt   = 6'd0;
+            end
+        endcase
+    end
+
+    // Output logic
+    always @* begin
+        red    = (state == RED);
+        yellow = (state == YELLOW);
+        green  = (state == GREEN);
+    end
+
+endmodule
+```'}
+
+ Iteration rank: 1.0
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

@@ -1,0 +1,356 @@
+user: Let us make a brand new microprocessor design together. We're severely constrained on space and I/O. We have to fit in 1000 standard cells of an ASIC, so I think we will need to restrict ourselves to an accumulator based 8-bit architecture with no multi-byte instructions. Given this, how do you think we should begin?
+assistant: Below is a **step‑by‑step playbook** for squeezing an 8‑bit accumulator‑style CPU into roughly **1 000 standard‑cell equivalents** (SCEs).  
+I’ve broken the effort into logical phases, highlighted the key trade‑offs you’ll hit at each step, and gave concrete “starter” numbers (gate counts, opcode widths, etc.) that you can tune as you go. Feel free to jump to the phase that interests you most, or let me know where you’d like to dive deeper (e.g., ISA encoding, ALU micro‑architecture, control‑FSM vs. micro‑ROM, I/O pin‑muxing, verification flow, etc.).
+
+---
+
+## 1. Clarify the System Constraints (5 min)
+
+| Parameter | Typical Value for a 1 k‑cell design | Why it matters |
+|-----------|--------------------------------------|----------------|
+| **Address space** | 8‑bit PC → 256 bytes (or 9‑bit PC → 512 B if you can spare a flip‑flop) | Keeps PC, MAR, and address‑generation logic tiny. |
+| **Data width** | 8‑bit accumulator (A) + 8‑bit temporary/flag register (F) | Matches the ISA width; no multi‑byte ops. |
+| **I/O pins** | 2–4 dedicated pins (e.g., *IN*, *OUT*, *RESET*, *CLK*) | Minimal external interface; you can multiplex if needed. |
+| **Clock** | 1 – 10 MHz (depends on library speed) | Determines how much combinational depth you can afford in a single cycle. |
+| **Power / area budget** | ~1 k SCE → ~0.01 mm² in a 65 nm LP library (rough) | Guides how many flip‑flops vs. gates you can afford. |
+| **Memory** | Separate **Instruction ROM** (read‑only) + **Data RAM** (read/write) – both can be implemented as small SRAM blocks or ROM/ROM‑like logic if the size is ≤256 B. | Harvard‑style decouples fetch from data‑access, reducing control‑logic complexity. |
+
+> **Ask yourself:** Do you need a stack? If yes, you can implement it in the data RAM (e.g., reserve the top 16 bytes for a software stack) – no extra hardware needed.
+
+---
+
+## 2. Define a Minimal ISA (15‑30 min)
+
+Because **multi‑byte instructions are forbidden**, each instruction must fit in a single 8‑bit word. A simple 4‑bit opcode + 4‑bit operand field works well for an accumulator machine.
+
+| Field | Bits | Meaning |
+|-------|------|---------|
+| **opcode** | [7:4] | Selects the operation (ALU, load/store, branch, control). |
+| **operand** | [3:0] | Either an **immediate** (0‑15), a **register selector** (if we add a second register), or a **branch offset** (signed 4‑bit, –8…+7). |
+
+### 2.1 Core Instructions (≈16 opcodes)
+
+| Opcode (hex) | Mnemonic | Operand use | Description |
+|--------------|----------|-------------|-------------|
+| 0x0 | **NOP** | – | No operation |
+| 0x1 | **LDA #imm** | imm | Load accumulator with 8‑bit immediate (imm = operand<<4 | next‑byte? *but we forbid multi‑byte* → we need a trick: use two‑cycle load: first latch high nibble, second latch low nibble – see §3). |
+| 0x2 | **STA addr** | addr (low 4 bits) | Store A to data RAM at address formed by (addr_high_register <<4) \| operand. We’ll keep a **page register** (P) for the high nibble (set via a separate instruction). |
+| 0x3 | **ADD #imm** | imm | A ← A + imm (set flags). |
+| 0x4 | **SUB #imm** | imm | A ← A – imm. |
+| 0x5 | **AND #imm** | imm | Bitwise AND. |
+| 0x6 | **OR  #imm** | imm | Bitwise OR. |
+| 0x7 | **XOR #imm** | imm | Bitwise XOR. |
+| 0x8 | **SHL** | – | Logical left shift (A←A<<1, C←old MSB). |
+| 0x9 | **SHR** | – | Logical right shift (A←A>>1, C←old LSB). |
+| 0xA | **JMP rel** | rel (signed 4‑bit) | PC ← PC + 1 + sign‑extend(rel). |
+| 0xB | **JZ rel** | rel | Jump if Z‑flag = 1. |
+| 0xC | **JC rel** | rel | Jump if C‑flag = 1. |
+| 0xD | **CALL rel** | rel | Push return address (PC+1) onto stack, then jump. |
+| 0xE | **RET** | – | Pop return address to PC. |
+| 0xF | **IN/OUT** | bit0 = 0 → IN, 1 → OUT; bits[3:1] = port# (0‑7) | Read/write a simple I/O port (single‑cycle). |
+
+**Why this works:**  
+* All instructions are a single byte.  
+* The accumulator is the only data register; we need only one extra register for the high‑address nibble (call it **PAGE**) and a **flag register** (Z,N,C,V).  
+* The instruction set is deliberately orthogonal enough to write useful programs (loops, subroutines, simple I/O).
+
+> **Alternative:** If you really cannot spare a PAGE register, you can restrict the CPU to a **single 256‑byte address space** (i.e., PC and MAR are both 8‑bit). Then `LDA #imm` and `STA addr` both use the full 8‑bit immediate as the address/data, but you lose the ability to load an arbitrary 8‑bit constant into A (you’d need to load from RAM). The table above assumes you can spare one extra 4‑bit register (PAGE) – that’s only **one flip‑flop** (plus its reset logic) and is well worth the flexibility.
+
+### 2.2 Opcode‑to‑Control Mapping
+
+| Opcode[7:4] | Control Signals Needed (examples) |
+|------------|------------------------------------|
+| 0x0 (NOP) | – |
+| 0x1 (LDA #imm) | LoadImmEn, AccLdEn, ImmSel (high/low nibble) |
+| 0x2 (STA) | MemWrEn, AddrSel (PAGE:operand) |
+| 0x3‑0x7 (ALU imm) | ALUOp, ImmSel, AccLdEn, FlagUpdEn |
+| 0x8‑0x9 (Shift) | ShiftDir, ShiftEn, AccLdEn, FlagUpdEn |
+| 0xA‑0xC (Branch) | PCSel (PC+1+offset), CondEval, PCWrEn |
+| 0xD (CALL) | StackPushEn, PCWrEn (to offset) |
+| 0xE (RET) | StackPopEn, PCWrEn (from stack) |
+| 0xF (I/O) | IORdEn/IOWrEn, PortSel, DataSel (Acc↔IO) |
+
+You can implement the control as a **hardwired FSM** (one state per instruction) or a **tiny micro‑ROM** (e.g., 16‑word ROM × 16‑bit control word). For 1 k cells, a hardwired FSM is usually cheaper because you avoid the ROM read‑port and address logic. We’ll discuss both in §4.
+
+---
+
+## 3. Datapath Architecture (20‑30 min)
+
+Below is a **block diagram** you can sketch on paper or in a schematic capture tool. All blocks are sized to fit in the 1 k‑cell budget.
+
+```
+                +-------------------+
+                |   Instruction ROM |   (8‑bit wide, 256‑deep → 2k bits)
+                +----------+--------+
+                           |
+                   +-------v-------+
+                   |  IR (8‑bit FF)|
+                   +-------+-------+
+                           |
+                +----------v----------+
+                |   Decoder / Control |   (hardwired FSM or micro‑ROM)
+                +----------+----------+
+                           |
+        +------------------+------------------+------------------+
+        |                  |                  |                  |
+   +----v----+        +----v----+        +----v----+        +----v----+
+   |  ACC    |        | PAGE  |        |  FLAGS  |        |  STACK  |
+   | (8‑bit) |        | (4‑bit) |        | (4‑bit) |        | (SP+RAM)|
+   +----+----+        +----+----+        +----+----+        +----+----+
+        |                  |                  |                  |
+        |                  |                  |                  |
+        +--------+---------+--------+---------+--------+
+                 |         |         |         |
+            +----v----+ +----v----+ +----v----+ +----v----+
+            |  ALU    | |  AddrMux| |  FlagLogic| |  StackPtr|
+            +----+----+ +----+----+ +----+----+ +----+----+
+                 |         |         |         |
+                 +---------+---------+---------+
+                         |
+                 +-------v-------+
+                 |   Data RAM    | (8‑bit wide, 256‑deep → 2k bits)
+                 +-------+-------+
+                         |
+                 +-------v-------+
+                 |   I/O Ports   | (simple registers)
+                 +---------------+
+```
+
+### 3.1 Register Count & Cell Estimate
+
+| Register | Width | FFs (approx.) | Notes |
+|----------|-------|---------------|-------|
+| IR (Instruction Register) | 8 | 8 | Can be shared with the instruction ROM output if you latch on rising edge. |
+| ACC (Accumulator) | 8 | 8 | Core datapath. |
+| PAGE (High‑address nibble) | 4 | 4 | Optional; if you drop it, you save 4 FFs. |
+| FLAGS (Z,N,C,V) | 4 | 4 | Can be packed into a single 4‑bit register. |
+| SP (Stack Pointer) | 8 (if you want a hardware stack) **or** use a memory‑based stack in RAM (no extra FF). For a tiny design, a **4‑bit SP** pointing into a 16‑entry hardware stack saves 4 FFs and lets CALL/RET be single‑cycle. |
+| PC (Program Counter) | 8 (or 9) | 8/9 | If you adopt a Harvard fetch, you need a PC that can be incremented and loaded with branch targets. |
+| I/O Data Registers (optional) | 8×N | 8N | Often you can just wire the accumulator directly to I/O pins; no extra FF needed. |
+
+**Total FFs (worst‑case, with 8‑bit PC, 4‑bit PAGE, 4‑bit FLAGS, 8‑bit IR, 8‑bit ACC, 8‑bit SP):** **40 flip‑flops**.  
+A typical D‑FF in a 65 nm library costs ~6‑8 cells → **≈250‑320 cells**. That leaves **≈680‑750 cells** for combinational logic (ALU, address muxes, control FSM, I/O glue, etc.) – plenty of headroom.
+
+### 3.2 ALU (8‑bit) – Core Area Consumer
+
+| Function | Typical Gate Count (NAND2 equiv.) | Comment |
+|----------|-----------------------------------|---------|
+| 8‑bit ripple‑carry adder (for ADD/SUB) | ~8 × (2‑input XOR + 2‑input AND + OR) ≈ 8 × 6 = 48 | Can be shared with SUB by adding a carry‑in inverter. |
+| Bitwise AND/OR/XOR | 8 × 2‑input gates per op ≈ 8 × 2 = 16 each | Can be multiplexed with the adder’s output. |
+| Shift left/right (logical) | 8 × 2‑input mux ≈ 8 × 2 = 16 (plus carry out) | Very cheap. |
+| Flag generation (Z,N,C,V) | ~12 gates | Z = NOR of all result bits; N = MSB; C = carry out; V = XOR of carry‑in & carry‑out of MSB. |
+| **Total** | **≈100‑120 NAND2‑eq** | Roughly **120‑150 cells**. |
+
+If you need to shave a few cells, replace the ripple‑carry adder with a **carry‑skip** or **carry‑look‑ahead** 4‑bit block (still small) – but the ripple is simplest and fits easily.
+
+### 3.3 Address Generation
+
+* **PC → Instruction ROM address** (straight‑wire from PC FFs).  
+* **MAR (Memory Address Register)** for data RAM: built from PAGE[3:0] (high nibble) + operand[3:0] (low nibble) → 8‑bit bus.  
+  * This is just a **2‑to‑1 mux** (select PAGE or 0) feeding the high nibble, and the low nibble comes straight from the IR operand field.  
+  * Cost: 8 × 2‑input mux ≈ 16 cells.
+
+### 3.4 Control Logic Options
+
+| Option | Area (cells) | Pros | Cons |
+|--------|--------------|------|------|
+| **Hardwired FSM** (one state per instruction, plus sub‑states for multi‑cycle ops like LDA #imm) | ~150‑200 cells (mostly gates & FFs for state register) | No ROM, deterministic timing, easy to debug. | Slightly more opcode decoding logic; adding new instructions means redesigning FSM. |
+| **Micro‑ROM (control store)** | ROM: 16 words × 20 bits ≈ 320 bits → ~40‑60 cells (depending on sense amp) + address decoder (~20 cells) + micro‑sequencer FFs (~8 cells) | Very regular; adding an instruction is just editing ROM contents. | Needs a read port and extra sequencing logic; a bit more power. |
+| **Hybrid** (hardwired for simple ALU ops, micro‑ROM for load/store/branch) | ~180 cells | Gets best of both worlds. | Slightly more complex to partition. |
+
+Given the 1 k‑cell ceiling, **hardwired FSM** is the safest first pass. You can always replace it later with a micro‑ROM if you find the opcode decoding becomes a bottleneck.
+
+### 3.5 I/O Interface
+
+* **Simple port-mapped I/O:** Two pins – `DATA_IN` and `DATA_OUT` – plus a `IO_STROBE` that the CPU asserts for one cycle when executing the `IN/OUT` instruction.  
+* No extra registers needed; the accumulator directly drives `DATA_OUT` on an OUT, and samples `DATA_IN` into ACC on an IN.  
+* If you need multiple ports, add a **2‑bit port selector** (from IR[3:1]) that drives a small decoder to enable the appropriate external pin (or internal register). That’s only a few extra gates.
+
+### 3.6 Clock & Reset
+
+* A single **global clock** (positive edge).  
+* **Asynchronous reset** (or synchronous, whichever your library prefers) that clears PC, ACC, FLAGS, PAGE, IR, and (if present) SP.  
+* Reset logic can be a simple **reset‑AND** on each FF’s D input (or a reset‑tree). Cost: negligible (<10 cells).
+
+---
+
+## 4. Putting It All Together – A Rough Cell Budget
+
+| Block | Approx. Cells (NAND2‑eq) |
+|-------|--------------------------|
+| Flip‑flops (PC, ACC, IR, FLAGS, PAGE, SP) | 260 |
+| ALU (adder + logic + flags) | 150 |
+| Address mux (PAGE + operand) | 20 |
+| Instruction ROM (256×8) – implemented as a **ROM macro** (often provided by the ASIC vendor as a hard macro) – **0 cells** in your standard‑cell count (it’s a separate memory block). |
+| Data RAM (256×8) – same as above – **0 cells** (if you use SRAM macros). |
+| Control FSM (hardwired) | 180 |
+| I/O glue (port select, strobe) | 30 |
+| Reset & clock distribution | 20 |
+| **Total** | **≈660 cells** |
+
+Even with a modest **20 % safety margin** for routing, placement overhead, and library‑specific cell sizes, you’re comfortably under the 1 000‑cell limit.  
+If you later discover you need a hardware stack (8‑bit SP) or extra flags, you still have headroom.
+
+---
+
+## 5. Suggested Development Flow (Week‑by‑Week)
+
+| Week | Goal | Deliverable |
+|------|------|-------------|
+| **1** | Finalize ISA & opcode map; decide on PAGE register vs. 256‑byte flat memory. | ISA spec document (tables, encoding). |
+| **2** | Sketch datapath (block diagram) and identify all required FFs & muxes. | Hand‑drawn or digital block diagram. |
+| **3** | Write a **behavioral Verilog/SystemVerilog** model of the CPU (no timing yet). Focus on functional correctness. | `cpu_behav.v` + a simple testbench that runs a few programs (e.g., LED blink, echo I/O). |
+| **4** | Synthesize the behavioral model to gate‑level using your target standard‑cell library (e.g., TSMC 65 nm LP). Check area & timing reports. | Netlist + area/timing numbers. |
+| **5** | If area > target, iterate: (a) replace ripple adder with carry‑skip 4‑bit, (b) shrink FSM, (c) drop PAGE if you can live with 256‑byte address space. | Revised netlist. |
+| **6** | Replace behavioral control with a **hardwired FSM** (or micro‑ROM) written in RTL. Verify functional equivalence via simulation. | `cpu_rtl.v` + testbench. |
+| **7** | Add **I/O stub** (simple registers) and reset logic. Run a more comprehensive test suite (loops, subroutines, interrupt‑like polling). | Testbench with coverage report. |
+| **8** | Perform **static timing analysis** (STA) on the gate‑level netlist. If you miss your target frequency, look for critical paths (usually the ALU carry chain or PC increment). Consider adding a **pipeline stage** (fetch‑decode‑execute) only if you need >5 MHz and can afford an extra PC register. | Timing report, optional pipeline tweak. |
+| **9** | Run **power estimation** (optional) and DRC/LVS checks (if you have a physical flow). | Power report, DRC/LVS clean. |
+| **10** | Finalize GDSII (or handoff to your foundry). Document any known limitations (e.g., max 256 B RAM, no hardware multiply). | Tape‑out package. |
+
+*You can compress or expand this schedule depending on your team size and tool access.*
+
+---
+
+## 6. Example Minimal Program (to sanity‑check the ISA)
+
+Assume we tied `DATA_OUT` to an LED and `DATA_IN` to a switch. The following program reads the switch, complements it, and writes it back to the LED forever.
+
+```
+;-------------------------------------------------
+; PAGE = 0   (we stay in page 0)
+;-------------------------------------------------
+ORG 0x00
+START:
+    IN  #0        ; read switch into ACC (PORT0)
+    XOR #0xFF     ; complement (ACC = ACC XOR 0xFF)
+    OUT #0        ; write to LED (PORT0)
+    JMP START     ; branch back
+;-------------------------------------------------
+```
+
+**Encoding (using the table above):**
+
+| Address | Machine Code (hex) | Meaning |
+|---------|--------------------|---------|
+| 0x00 | `F0` | IN #0 (opcode 0xF, operand 0b0000 → port 0, read) |
+| 0x01 | `EF` | XOR #0xFF (opcode 0xE, operand 0b1111) |
+| 0x02 | `F1` | OUT #0 (opcode 0xF, operand 0b0001 → port 0, write) |
+| 0x03 | `A0` | JMP rel=0 (opcode 0xA, operand 0b0000 → jump to PC+1+0 = 0x04 → wraps to 0x00 because PC is 8‑bit) |
+
+> **Note:** The JMP encoding above assumes a signed 4‑bit offset; `0` means “stay at next instruction”. If you want a true loop, use offset `0xFF` (−1) → opcode `AF`.
+
+Load this into your instruction ROM, reset, and watch the LED toggle with the switch—great first silicon test!
+
+---
+
+## 7. Things to Watch Out For (Common Pitfalls)
+
+| Pitfall | Why it Happens | Mitigation |
+|---------|----------------|------------|
+| **Carry‑chain delay dominates** | Ripple‑carry adder’s worst‑case path is ~8 gate delays. | If you need >5 MHz, consider a **4‑bit carry‑skip** or **carry‑look‑ahead** block; still tiny. |
+| **Instruction ROM access time** | ROM read may be 1‑2 cycles; you must stall the CPU if the ROM is slower than the clock. | Use a **single‑cycle ROM macro** (most foundries provide synchronous ROM that meets 1‑cycle timing at modest frequencies) or add a **pipeline stage** (fetch → decode → execute). |
+| **Flag update hazards** | Flags depend on ALU result; if you latch ACC before flags are stable, you get a race. | Ensure the ALU result and flags are latched on the **same clock edge** (e.g., both FFs have the same clock, and the combinational path from ALU to both FFs meets setup). |
+| **Incorrect signed‑branch offset** | Off‑by‑one errors are common when mixing PC+1 vs. PC. | Write a small **model checker** or testbench that enumerates all possible offsets and compares against a golden reference (e.g., a Python emulator). |
+| **I/O glitches** | If you drive I/O pins directly from ACC without a register, a combinational glitch can appear on the pin during ALU transitions. | Register the I/O data (a simple output FF) or add a **glitch‑free enable** (only drive the pin during the OUT instruction’s execute phase). |
+| **Power‑on reset not reaching all FFs** | Asynchronous reset trees can have uneven delay, causing some FFs to come up undefined. | Use a **synchronous reset** (reset signal sampled by clock) for all state elements, or a **reset synchronizer** if you must keep async reset. |
+
+---
+
+## 8. Next Steps – What Do You Want to Tackle First?
+
+1. **ISA refinement** – Do you want to keep the PAGE register, or would you rather stay within a single 256‑byte address space and sacrifice immediate loads?  
+2. **Datapath sketch** – Would you like me to draw a more detailed block diagram (with signal names) that you can copy into your RTL editor?  
+3. **Opcode decoding** – Shall we start with a truth table for the hardwired FSM, or would you prefer to prototype a micro‑ROM first?  
+4. **Toolchain** – Are you targeting a specific ASIC library (e.g., TSMC 65 nm LP, GlobalFoundries 45 nm, SkyWater 130 nm)? I can tailor the cell‑count estimates and suggest which macros (ROM, SRAM) are typically offered as hard macros.  
+5. **Testbench** – Want a quick Verilog testbench that assembles the sample program above and toggles a virtual LED? I can drop that in now.
+
+Just let me know which piece you’d like to dive into, and we’ll iterate from there!
+user: Please settle on a final design and list: the instruction set with binary encodings, the registers and their widths, the memory size and how the processor accesses it, and the Verilog module port list. Keep the answer concise.
+assistant: **Accumulator‑8‑bit ASIC Core (≈1 k cells)**  
+
+---
+
+### 1. Instruction Set  (all instructions are a single 8‑bit word)
+
+| Opcode (hex) | Binary  (opcode[7:4] | operand[3:0]) | Mnemonic | Operand meaning | Action (one clock cycle) |
+|--------------|----------------------|----------|----------|------------------|--------------------------|
+| 0x0 | `0000 xxxx` | **NOP** | – | No operation |
+| 0x1 | `0001 xxxx` | **LDHI #imm4** | imm4 = operand | MAR[7:4] ← imm4  (MAR = Memory‑Address Register) |
+| 0x2 | `0010 xxxx` | **LDLO #imm4** | imm4 = operand | MAR[3:0] ← imm4 |
+| 0x3 | `0011 xxxx` | **LOAD** | – | ACC ← RAM[MAR] |
+| 0x4 | `0100 xxxx` | **STORE** | – | RAM[MAR] ← ACC |
+| 0x5 | `0101 xxxx` | **ADD #imm4** | imm4 = operand (0‑15) | ACC ← ACC + imm4  (set Z,N,C) |
+| 0x6 | `0110 xxxx` | **SUB #imm4** | imm4 = operand | ACC ← ACC – imm4  (set Z,N,C) |
+| 0x7 | `0111 xxxx` | **AND #imm4** | imm4 = operand | ACC ← ACC & imm4  (set Z,N) |
+| 0x8 | `1000 xxxx` | **OR  #imm4** | imm4 = operand | ACC ← ACC \| imm4  (set Z,N) |
+| 0x9 | `1001 xxxx` | **XOR #imm4** | imm4 = operand | ACC ← ACC ^ imm4  (set Z,N) |
+| 0xA | `1010 xxxx` | **JMP rel4** | rel4 = signed 4‑bit (‑8…+7) | PC ← PC + 1 + sign‑extend(rel4) |
+| 0xB | `1011 xxxx` | **JZ rel4** | rel4 = signed 4‑bit | if Z=1 then PC ← PC + 1 + sign‑extend(rel4) |
+| 0xC | `1100 xxxx` | **JC rel4** | rel4 = signed 4‑bit | if C=1 then PC ← PC + 1 + sign‑extend(rel4) |
+| 0xD | `1101 xxxx` | **CALL rel4** | rel4 = signed 4‑bit | push (PC+1) onto stack; PC ← PC + 1 + sign‑extend(rel4) |
+| 0xE | `1110 xxxx` | **RET** | – | PC ← pop from stack |
+| 0xF | `1111 bppp` | **IO** | b = direction (0=IN,1=OUT)  <br> ppp = port number (0‑7) | if b=0: ACC ← IO_PORT[ppp]  <br> if b=1: IO_PORT[ppp] ← ACC |
+
+*All arithmetic/logic instructions update Z (zero) and N (negative‑flag = MSB of result).  
+ADD/SUB also update C (carry out of the MSB).  
+The stack is located in the data RAM; the stack pointer is maintained in software (e.g., reserve the top 16 bytes).*
+
+---
+
+### 2. Programmer‑Visible Registers
+
+| Register | Width | Description |
+|----------|-------|-------------|
+| **ACC**  | 8 bit | Accumulator – source/destination for ALU, load/store, I/O |
+| **MAR**  | 8 bit | Memory‑Address Register (built from two 4‑bit halves: MARH = MAR[7:4], MARL = MAR[3:0]) |
+| **FLAGS**| 4 bit | Z (zero), N (negative), C (carry), V (overflow – optional, can be omitted) |
+| **PC**   | 8 bit | Program Counter (points to instruction ROM) |
+| **IR**   | 8 bit | Instruction Register (internal, not visible to software) |
+
+*Total flip‑flops ≈ 8+8+4+8+8 = 36 FFs → ≈ 200‑250 cells in a typical 65 nm library.*
+
+---
+
+### 3. Memory Organisation
+
+| Memory | Size | Access | Remarks |
+|--------|------|--------|---------|
+| **Instruction ROM** | 256 × 8 bits (read‑only) | Address = **PC** (8 bit) → data → IR | Harvard‑style; can be implemented as a synchronous ROM macro. |
+| **Data RAM** | 256 × 8 bits (read/write) | Address = **MAR** (8 bit) → data bus | Used for variables, stack, and memory‑mapped I/O if desired. |
+| **I/O ports** | 8 × 8‑bit registers (optional) | Selected by **IO** instruction (port 0‑7) | No extra CPU registers needed; the ACC drives the port directly. |
+
+*Both ROM and RAM are assumed to be provided as hard macros by the ASIC library; they do not consume standard‑cell count.*
+
+---
+
+### 4. Verilog Top‑Level Port List
+
+```verilog
+module cpu8_acc (
+    input  wire        clk,          // system clock
+    input  wire        rst_n,        // active‑low asynchronous reset
+
+    // ----- Instruction ROM (read‑only) -----
+    output wire [7:0]  imem_addr,    // address to ROM
+    input  wire [7:0]  imem_data,    // data from ROM
+
+    // ----- Data RAM (read/write) -----
+    output wire [7:0]  dmem_addr,    // address to RAM
+    inout  wire [7:0]  dmem_data,    // bidirectional data bus
+    output wire        dmem_we,      // 1 = write, 0 = read
+
+    // ----- Simple memory‑mapped I/O (port‑mapped) -----
+    output wire [2:0]  io_port,      // 3‑bit port selector (0‑7)
+    output wire        io_wr,        // write strobe (high during OUT)
+    input  wire [7:0]  io_data_in,   // data from external pins
+    output wire [7:0]  io_data_out   // data driven to external pins
+);
+```
+
+*The CPU drives `imem_addr` to fetch the next opcode, receives the opcode in `imem_data`, and (after decode) drives `dmem_addr`/`dmem_data`/`dmem_we` for LOAD/STORE operations.  
+The `IO` instruction asserts `io_wr` for an OUT, places the selected port number on `io_port`, and either drives `io_data_out` (OUT) or samples `io_data_in` (IN) into the accumulator.*
+
+---
+
+**Result:** A fully functional 8‑bit accumulator CPU that fits comfortably inside a ~1 000‑cell standard‑cell budget, needs only a single‑cycle fetch/decode/execute per instruction, and provides a clean Verilog interface for ASIC integration.

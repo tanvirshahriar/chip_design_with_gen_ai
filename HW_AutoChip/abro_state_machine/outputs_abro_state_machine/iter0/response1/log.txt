@@ -1,0 +1,74 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for an ABRO state machine. It must meet the following specifications:\n//    - Inputs:\n//        - Clock\n//        - Active-low reset\n//        - A\n//        - B\n//    - Outputs:\n//        - O\n//        - State\n//\n// Other than the main output from ABRO machine, it should output the current state of the machine for use in verification.\n//\n// The states for this state machine should be one-hot encoded.\n//\n// How would I write a design that meets these specifications?\n\nmodule abro_state_machine(\n\tinput clk,\n\tinput rst_n,\n\tinput A,\n\tinput B,\n\toutput O,\n\toutput [3:0] State\n);\n'}
+{role : 'assistant', content : '```verilog
+module abro_state_machine(
+    input clk,
+    input rst_n,
+    input A,
+    input B,
+    output O,
+    output [3:0] State
+);
+    // One‑hot state encoding
+    localparam [3:0] S_A = 4'b0001; // State A
+    localparam [3:0] S_B = 4'b0010; // State B
+    localparam [3:0] S_O = 4'b0100; // State O (output asserted)
+    localparam [3:0] S_R = 4'b1000; // State R (reset)
+
+    reg [3:0] state;
+    reg [3:0] next_state;
+
+    // State register (active‑low reset)
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            state <= S_R;        // reset state
+        else
+            state <= next_state; // normal operation
+    end
+
+    // Next‑state logic
+    always @(*) begin
+        next_state = state; // default: hold current state
+        case (1'b1) // one‑hot case statement
+            S_A: begin // currently in State A
+                if (A)
+                    next_state = S_B; // A=1 → move to B
+                else
+                    next_state = S_A; // stay in A
+            end
+            S_B: begin // currently in State B
+                if (B)
+                    next_state = S_O; // B=1 → move to O (output)
+                else if (~A)
+                    next_state = S_A; // A went low → restart
+                else
+                    next_state = S_B; // wait for B
+            end
+            S_O: begin // currently in State O (output asserted)
+                if (!rst_n)
+                    next_state = S_R; // reset asserted → go to reset state
+                else
+                    next_state = S_O; // stay in O
+            end
+            S_R: begin // currently in Reset State
+                if (rst_n)
+                    next_state = S_A; // reset released → go to A
+                else
+                    next_state = S_R; // stay reset while asserted
+            end
+            default: next_state = S_A; // fallback (should never occur)
+        endcase
+    end
+
+    // Output logic
+    assign O = state[2]; // high when in State O
+    assign State = state; // one‑hot state vector for verification
+endmodule
+```'}
+
+ Iteration rank: 0.0625
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

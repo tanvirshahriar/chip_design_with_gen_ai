@@ -1,0 +1,57 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for a sequence detector. It must meet the following specifications:\n//\t- Inputs:\n//\t\t- Clock\n//\t\t- Active-low reset\n//\t\t- Data (3 bits)\n//\t- Outputs:\n//\t\t- Sequence found\n//\n// While enabled, it should detect the following sequence of binary input values:\n//\t- 0b001\n//\t- 0b101\n//\t- 0b110\n//\t- 0b000\n//\t- 0b110\n//\t- 0b110\n//\t- 0b011\n//\t- 0b101\n//\n// How would I write a design that meets these specifications?\n\nmodule sequence_detector(\n\tinput clk,\n\tinput reset_n,\n\tinput [2:0] data,\n\toutput sequence_found\n);\n'}
+{role : 'assistant', content : '```verilog
+module sequence_detector(
+    input  clk,
+    input  reset_n,      // active-low reset
+    input  [2:0] data,   // 3-bit input data
+    output reg sequence_found
+);
+    // Sequence to detect: 001, 101, 110, 000, 110, 110, 011, 101
+    localparam [7:0][2:0] SEQ = {
+        3'b001,
+        3'b101,
+        3'b110,
+        3'b000,
+        3'b110,
+        3'b110,
+        3'b011,
+        3'b101
+    };
+
+    // State holds how many elements of the sequence have been matched so far (0-7)
+    reg [2:0] state; // 3 bits enough for 0-7
+
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin            // synchronous active-low reset
+            state     <= 3'd0;
+            sequence_found <= 1'b0;
+        end else begin
+            sequence_found <= 1'b0;   // default: no match this cycle
+
+            if (data == SEQ[state]) begin // correct next symbol
+                if (state == 3'd7) begin // last symbol matched
+                    sequence_found <= 1'b1;
+                    state     <= 3'd0; // restart detection (allow overlap)
+                end else begin
+                    state <= state + 3'd1; // advance to next state
+                end
+            end else begin
+                // Mismatch: reset, but allow the current symbol to be a possible start
+                if (data == SEQ[0]) begin
+                    state <= 3'd1; // we have matched the first symbol already
+                end else begin
+                    state <= 3'd0; // no partial match
+                end
+            end
+        end
+    end
+endmodule
+```'}
+
+ Iteration rank: -1
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

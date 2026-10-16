@@ -1,0 +1,51 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for a sequence generator. It must meet the following specifications:\n//\t- Inputs:\n//\t\t- Clock\n//\t\t- Active-low reset\n//\t\t- Enable\n//\t- Outputs:\n//\t\t- Data (8 bits)\n//\n// While enabled, it should generate an output sequence of the following hexadecimal values and then repeat:\n//\t- 0xAF\n//\t- 0xBC\n//\t- 0xE2\n//\t- 0x78\n//\t- 0xFF\n//\t- 0xE2\n//\t- 0x0B\n//\t- 0x8D\n//\n// How would I write a design that meets these specifications?\n\nmodule sequence_generator(\n\tinput clk,\n\tinput reset_n,\n\tinput enable,\n\toutput [7:0] data\n);\n'}
+{role : 'assistant', content : '```verilog
+module sequence_generator (
+    input  clk,
+    input  reset_n,
+    input  enable,
+    output reg [7:0] data
+);
+    // State pointer for the 8‑element sequence
+    reg [2:0] ptr;          // 3‑bit counter (0‑7)
+    // ROM holding the required hexadecimal values
+    reg [7:0] seq [0:7];
+
+    // Initialize the lookup table
+    initial begin
+        seq[0] = 8'hAF;
+        seq[1] = 8'hBC;
+        seq[2] = 8'hE2;
+        seq[3] = 8'h78;
+        seq[4] = 8'hFF;
+        seq[5] = 8'hE2;
+        seq[6] = 8'h0B;
+        seq[7] = 8'h8D;
+        ptr    = 3'b0;
+        data   = seq[0];
+    end
+
+    // Synchronous reset (active‑low) and enable logic
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            // Reset to the first element of the sequence
+            ptr    <= 3'b0;
+            data   <= seq[0];
+        end
+        else if (enable) begin
+            // Output the current value, then advance the pointer
+            data   <= seq[ptr];
+            ptr    <= ptr + 3'b1;   // wraps automatically from 7 to 0
+        end
+        // If enable is low, hold the current output (no change to ptr or data)
+    end
+endmodule
+```'}
+
+ Iteration rank: 1.0
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

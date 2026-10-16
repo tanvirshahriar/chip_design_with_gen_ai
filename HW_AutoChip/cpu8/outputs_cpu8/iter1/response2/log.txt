@@ -1,0 +1,234 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': "// Let us make a brand new microprocessor design together. We're severely constrained on space and I/O. We have to fit in 1000 standard cells of an ASIC, so I think we will need to restrict ourselves to an accumulator based 8-bit architecture with no multi-byte instructions. Given this, how do you think we should begin?\n//\n// We settled on the following design. Implement it with the module interface below.\n//\n// **Accumulator‑8‑bit ASIC Core (≈1\u202fk\u202fcells)**  \n//\n// ---\n//\n// ### 1. Instruction Set  (all instructions are a single 8‑bit word)\n//\n// | Opcode (hex) | Binary  (opcode[7:4]\u202f|\u202foperand[3:0]) | Mnemonic | Operand meaning | Action (one clock cycle) |\n// |--------------|----------------------|----------|----------|------------------|--------------------------|\n// | 0x0 | `0000 xxxx` | **NOP** | – | No operation |\n// | 0x1 | `0001 xxxx` | **LDHI #imm4** | imm4 = operand | MAR[7:4] ← imm4\u2003\u2003(MAR = Memory‑Address Register) |\n// | 0x2 | `0010 xxxx` | **LDLO #imm4** | imm4 = operand | MAR[3:0] ← imm4 |\n// | 0x3 | `0011 xxxx` | **LOAD** | – | ACC ← RAM[MAR] |\n// | 0x4 | `0100 xxxx` | **STORE** | – | RAM[MAR] ← ACC |\n// | 0x5 | `0101 xxxx` | **ADD #imm4** | imm4 = operand (0‑15) | ACC ← ACC + imm4  (set Z,N,C) |\n// | 0x6 | `0110 xxxx` | **SUB #imm4** | imm4 = operand | ACC ← ACC – imm4  (set Z,N,C) |\n// | 0x7 | `0111 xxxx` | **AND #imm4** | imm4 = operand | ACC ← ACC & imm4  (set Z,N) |\n// | 0x8 | `1000 xxxx` | **OR  #imm4** | imm4 = operand | ACC ← ACC \\| imm4  (set Z,N) |\n// | 0x9 | `1001 xxxx` | **XOR #imm4** | imm4 = operand | ACC ← ACC ^ imm4  (set Z,N) |\n// | 0xA | `1010 xxxx` | **JMP rel4** | rel4 = signed 4‑bit (‑8…+7) | PC ← PC + 1 + sign‑extend(rel4) |\n// | 0xB | `1011 xxxx` | **JZ rel4** | rel4 = signed 4‑bit | if Z=1 then PC ← PC + 1 + sign‑extend(rel4) |\n// | 0xC | `1100 xxxx` | **JC rel4** | rel4 = signed 4‑bit | if C=1 then PC ← PC + 1 + sign‑extend(rel4) |\n// | 0xD | `1101 xxxx` | **CALL rel4** | rel4 = signed 4‑bit | push (PC+1) onto stack; PC ← PC + 1 + sign‑extend(rel4) |\n// | 0xE | `1110 xxxx` | **RET** | – | PC ← pop from stack |\n// | 0xF | `1111 bppp` | **IO** | b = direction (0=IN,1=OUT)  <br> ppp = port number (0‑7) | if b=0: ACC ← IO_PORT[ppp]  <br> if b=1: IO_PORT[ppp] ← ACC |\n//\n// *All arithmetic/logic instructions update Z (zero) and N (negative‑flag = MSB of result).  \n// ADD/SUB also update C (carry out of the MSB).  \n// The stack is located in the data RAM; the stack pointer is maintained in software (e.g., reserve the top 16\u202fbytes).*\n//\n// ---\n//\n// ### 2. Programmer‑Visible Registers\n//\n// | Register | Width | Description |\n// |----------|-------|-------------|\n// | **ACC**  | 8\u202fbit | Accumulator – source/destination for ALU, load/store, I/O |\n// | **MAR**  | 8\u202fbit | Memory‑Address Register (built from two 4‑bit halves: MARH = MAR[7:4], MARL = MAR[3:0]) |\n// | **FLAGS**| 4\u202fbit | Z (zero), N (negative), C (carry), V (overflow – optional, can be omitted) |\n// | **PC**   | 8\u202fbit | Program Counter (points to instruction ROM) |\n// | **IR**   | 8\u202fbit | Instruction Register (internal, not visible to software) |\n//\n// *Total flip‑flops ≈ 8+8+4+8+8 = 36\u202fFFs → ≈\u202f200‑250\u202fcells in a typical 65\u202fnm library.*\n//\n// ---\n//\n// ### 3. Memory Organisation\n//\n// | Memory | Size | Access | Remarks |\n// |--------|------|--------|---------|\n// | **Instruction ROM** | 256\u202f×\u202f8\u202fbits (read‑only) | Address = **PC** (8\u202fbit) → data → IR | Harvard‑style; can be implemented as a synchronous ROM macro. |\n// | **Data RAM** | 256\u202f×\u202f8\u202fbits (read/write) | Address = **MAR** (8\u202fbit) → data bus | Used for variables, stack, and memory‑mapped I/O if desired. |\n// | **I/O ports** | 8\u202f×\u202f8‑bit registers (optional) | Selected by **IO** instruction (port\u202f0‑7) | No extra CPU registers needed; the ACC drives the port directly. |\n//\n// *Both ROM and RAM are assumed to be provided as hard macros by the ASIC library; they do not consume standard‑cell count.*\n\nmodule cpu8_acc (\n    input  wire        clk,          // system clock\n    input  wire        rst_n,        // active‑low asynchronous reset\n\n    // ----- Instruction ROM (read‑only) -----\n    output wire [7:0]  imem_addr,    // address to ROM\n    input  wire [7:0]  imem_data,    // data from ROM\n\n    // ----- Data RAM (read/write) -----\n    output wire [7:0]  dmem_addr,    // address to RAM\n    inout  wire [7:0]  dmem_data,    // bidirectional data bus\n    output wire        dmem_we,      // 1 = write, 0 = read\n\n    // ----- Simple memory‑mapped I/O (port‑mapped) -----\n    output wire [2:0]  io_port,      // 3‑bit port selector (0‑7)\n    output wire        io_wr,        // write strobe (high during OUT)\n    input  wire [7:0]  io_data_in,   // data from external pins\n    output wire [7:0]  io_data_out   // data driven to external pins\n);\n"}
+{'role': 'assistant', 'content': ''}
+{'role': 'user', 'content': 'No modules found in response'}
+{role : 'assistant', content : '```verilog
+module cpu8_acc (
+    input  wire        clk,          // system clock
+    input  wire        rst_n,        // active‑low asynchronous reset
+
+    // ----- Instruction ROM (read‑only) -----
+    output wire [7:0]  imem_addr,    // address to ROM
+    input  wire [7:0]  imem_data,    // data from ROM
+
+    // ----- Data RAM (read/write) -----
+    output wire [7:0]  dmem_addr,    // address to RAM
+    inout  wire [7:0]  dmem_data,    // bidirectional data bus
+    output wire        dmem_we,      // 1 = write, 0 = read
+
+    // ----- Simple memory‑mapped I/O (port‑mapped) -----
+    output wire [2:0]  io_port,      // 3‑bit port selector (0‑7)
+    output wire        io_wr,        // write strobe (high during OUT)
+    input  wire [7:0]  io_data_in,   // data from external pins
+    output wire [7:0]  io_data_out   // data driven to external pins
+);
+    // ------------------- internal registers -------------------
+    reg  [7:0] PC;          // program counter
+    reg  [7:0] ACC;         // accumulator
+    reg  [7:0] MAR;         // memory address register
+    reg  [7:0] SP;          // stack pointer (internal, not visible)
+    reg  [2:0] FLAGS;       // {Z, N, C}
+    // ------------------- wire declarations -------------------
+    wire [7:0] opcode   = imem_data[7:4];
+    wire [3:0] operand  = imem_data[3:0];
+    wire       io_en    = (opcode == 4'hF);           // IO instruction
+    wire       io_dir   = operand[3];                 // 0 = IN, 1 = OUT
+    wire [2:0] io_port_num = operand[2:0];
+
+    // sign‑extend 4‑bit offset to 8‑bit
+    wire [7:0] signext_offset = {{4{operand[3]}}, operand[3:0]};
+    wire [7:0] pc_plus_1      = PC + 8'd1;
+    wire [7:0] branch_target  = pc_plus_1 + signext_offset;
+
+    // ALU helpers
+    wire [7:0] imm4 = {4'b0, operand};                // zero‑extend imm4
+    wire [8:0] add_sum  = {1'b0, ACC} + {1'b0, imm4};
+    wire [8:0] sub_sum  = {1'b0, ACC} + ({1'b0, ~imm4} + 9'd1);
+    wire       add_cout = add_sum[8];
+    wire       sub_cout = sub_sum[8];
+    wire [7:0] add_res  = add_sum[7:0];
+    wire [7:0] sub_res  = sub_sum[7:0];
+    wire [7:0] and_res  = ACC & imm4;
+    wire [7:0]  or_res  = ACC | imm4;
+    wire [7:0]  xor_res = ACC ^ imm4;
+
+    // memory control signals
+    wire        mem_we;          // write enable to RAM
+    wire [7:0]  mem_addr;        // address to RAM
+    wire [7:0]  mem_wr_data;     // data to write to RAM
+    wire [7:0]  mem_rd_data;     // data read from RAM (captured from dmem_data)
+
+    // I/O control signals
+    wire        io_write;        // high during OUT
+    wire [7:0]  io_out_data;     // data driven to io_data_out
+
+    // ------------------- combinational next‑state logic -------------------
+    // defaults (no change unless overridden)
+    wire [7:0] next_PC      = pc_plus_1;          // fall‑through
+    wire [7:0] next_ACC     = ACC;
+    wire [7:0] next_MAR     = MAR;
+    wire [7:0] next_SP      = SP;
+    wire [2:0] next_FLAGS   = FLAGS;
+
+    // memory defaults
+    assign mem_we   = 1'b0;
+    assign mem_addr = 8'd0;
+    assign mem_wr_data = 8'd0;
+
+    // I/O defaults
+    assign io_write   = 1'b0;
+    assign io_out_data = 8'd0;
+    assign io_port    = 3'd0;
+
+    // decode and execute
+    always @* begin
+        // ----- default flag preservation -----
+        next_FLAGS = FLAGS;
+
+        // ----- instruction decode -----
+        case (opcode)
+            4'h0: begin // NOP
+                // nothing changes except PC (already pc_plus_1)
+            end
+            4'h1: begin // LDHI #imm4
+                next_MAR[7:4] = operand;
+                next_MAR[3:0] = MAR[3:0];
+            end
+            4'h2: begin // LDLO #imm4
+                next_MAR[3:0] = operand;
+                next_MAR[7:4] = MAR[7:4];
+            end
+            4'h3: begin // LOAD
+                // memory read from MAR
+                mem_we   = 1'b0;
+                mem_addr = MAR;
+                // captured data will be used below
+            end
+            4'h4: begin // STORE
+                mem_we   = 1'b1;
+                mem_addr = MAR;
+                mem_wr_data = ACC;
+            end
+            4'h5: begin // ADD #imm4
+                next_ACC   = add_res;
+                next_FLAGS[2] = (next_ACC == 8'd0); // Z
+                next_FLAGS[1] = next_ACC[7];        // N
+                next_FLAGS[0] = add_cout;           // C
+            end
+            4'h6: begin // SUB #imm4
+                next_ACC   = sub_res;
+                next_FLAGS[2] = (next_ACC == 8'd0); // Z
+                next_FLAGS[1] = next_ACC[7];        // N
+                next_FLAGS[0] = sub_cout;           // C
+            end
+            4'h7: begin // AND #imm4
+                next_ACC   = and_res;
+                next_FLAGS[2] = (next_ACC == 8'd0); // Z
+                next_FLAGS[1] = next_ACC[7];        // N
+                // C unchanged
+            end
+            4'h8: begin // OR #imm4
+                next_ACC   = or_res;
+                next_FLAGS[2] = (next_ACC == 8'd0); // Z
+                next_FLAGS[1] = next_ACC[7];        // N
+                // C unchanged
+            end
+            4'h9: begin // XOR #imm4
+                next_ACC   = xor_res;
+                next_FLAGS[2] = (next_ACC == 8'd0); // Z
+                next_FLAGS[1] = next_ACC[7];        // N
+                // C unchanged
+            end
+            4'hA: begin // JMP rel4
+                next_PC = branch_target;
+            end
+            4'hB: begin // JZ rel4
+                if (FLAGS[2]) // Z==1
+                    next_PC = branch_target;
+                else
+                    next_PC = pc_plus_1;
+            end
+            4'hC: begin // JC rel4
+                if (FLAGS[0]) // C==1
+                    next_PC = branch_target;
+                else
+                    next_PC = pc_plus_1;
+            end
+            4'hD: begin // CALL rel4
+                // push return address (PC+1) onto stack
+                mem_we   = 1'b1;
+                mem_addr = SP - 8'd1;      // pre‑decrement
+                mem_wr_data = pc_plus_1;
+                next_SP   = SP - 8'd1;
+                next_PC   = branch_target;
+            end
+            4'hE: begin // RET
+                // pop return address from stack
+                mem_we   = 1'b0;
+                mem_addr = SP;
+                // captured data will become next PC
+            end
+            4'hF: begin // IO
+                if (io_dir == 1'b0) begin // IN
+                    next_ACC = io_data_in;
+                end else begin // OUT
+                    io_write   = 1'b1;
+                    io_out_data = ACC;
+                    io_port    = io_port_num;
+                end
+                // ACC unchanged for OUT case (already default)
+            end
+            default: begin
+                // undefined opcode -> treat as NOP
+            end
+        endcase
+
+        // ----- handle memory read results -----
+        // LOAD: ACC <- data read from MAR
+        if (opcode == 4'h3) begin
+            next_ACC = mem_rd_data;
+        end
+        // RET: PC <- data read from SP
+        if (opcode == 4'hE) begin
+            next_PC = mem_rd_data;
+        end
+    end
+
+    // ------------------- sequential logic -------------------
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            PC      <= 8'd0;
+            ACC     <= 8'd0;
+            MAR     <= 8'd0;
+            SP      <= 8'hFF;          // start at top of RAM
+            FLAGS   <= 3'd0;
+        end else begin
+            PC      <= next_PC;
+            ACC     <= next_ACC;
+            MAR     <= next_MAR;
+            SP      <= next_SP;
+            FLAGS   <= next_FLAGS;
+        end
+    end
+
+    // ------------------- external interface wiring -------------------
+    assign imem_addr = PC;                     // instruction fetch address
+    assign dmem_addr = mem_addr;               // data RAM address
+    assign dmem_we   = mem_we;                 // write enable to RAM
+    // bidirectional data bus: drive when writing, otherwise high‑Z
+    assign dmem_data = mem_we ? mem_wr_data : 8'bz;
+    // capture read data (valid when not driving)
+    assign mem_rd_data = dmem_data;
+
+    // I/O wiring
+    assign io_wr    = io_write;
+    assign io_data_out = io_out_data;
+endmodule
+```'}
+
+ Iteration rank: -2
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

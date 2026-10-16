@@ -1,0 +1,59 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for a simulated dice roller. It must meet the following specifications:\n//    - Inputs:\n//        - Clock\n//        - Active-low reset\n//        - Die select (2-bits)\n//        - Roll\n//    - Outputs:\n//        - Rolled number (up to 8-bits)\n//\n// The design should simulate rolling either a 4-sided, 6-sided, 8-sided, or 20-sided die, based on the input die select. It should roll when the roll input goes high and output the random number based on the number of sides of the selected die.\n//\n// How would I write a design that meets these specifications?\n\nmodule dice_roller(\n\tinput clk,\n\tinput rst_n,\n\tinput [1:0] die_select,\n\tinput roll,\n\toutput [7:0] rolled_number\n);\n'}
+{role : 'assistant', content : '```verilog
+module dice_roller (
+    input  wire        clk,        // system clock
+    input  wire        rst_n,      // active-low reset
+    input  wire [1:0]  die_select, // selects die type
+    input  wire        roll,       // triggers a roll (high to sample)
+    output reg  [7:0]  rolled_number // result of the roll (1‑N)
+);
+
+    // -------------------------------------------------
+    // Die mapping: 2'b00 -> 4‑sided, 2'b01 -> 6‑sided,
+    //                2'b10 -> 8‑sided, 2'b11 -> 20‑sided
+    // -------------------------------------------------
+    function automatic [4:0] get_sides;
+        input [1:0] sel;
+        case (sel)
+            2'b00: get_sides = 4;
+            2'b01: get_sides = 6;
+            2'b10: get_sides = 8;
+            2'b11: get_sides = 20;
+            default: get_sides = 4;
+        endcase
+    endfunction
+
+    // -------------------------------------------------
+    // Simple 16‑bit LFSR for pseudo‑random numbers
+    // Polynomial: x^16 + x^14 + x^13 + x^11 + 1
+    // -------------------------------------------------
+    reg [15:0] lfsr;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            // non‑zero seed to avoid lock‑up
+            lfsr <= 16'hACE1;
+            rolled_number <= 8'd0;
+        end else begin
+            // LFSR shift
+            lfsr <= {lfsr[14:0], lfsr[15] ^ lfsr[13] ^ lfsr[12] ^ lfsr[10]};
+
+            // Sample a new value only when roll is asserted
+            if (roll) begin
+                // Compute (lfsr % sides) + 1  -> range 1..sides
+                rolled_number <= (lfsr % get_sides(die_select)) + 8'd1;
+            end
+            // If roll is low, retain the previous value
+        end
+    end
+
+endmodule
+```'}
+
+ Iteration rank: -2
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000

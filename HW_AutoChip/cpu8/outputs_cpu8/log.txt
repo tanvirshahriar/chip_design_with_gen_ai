@@ -1,0 +1,1344 @@
+system: You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     
+user: // Let us make a brand new microprocessor design together. We're severely constrained on space and I/O. We have to fit in 1000 standard cells of an ASIC, so I think we will need to restrict ourselves to an accumulator based 8-bit architecture with no multi-byte instructions. Given this, how do you think we should begin?
+//
+// We settled on the following design. Implement it with the module interface below.
+//
+// **Accumulator‑8‑bit ASIC Core (≈1 k cells)**  
+//
+// ---
+//
+// ### 1. Instruction Set  (all instructions are a single 8‑bit word)
+//
+// | Opcode (hex) | Binary  (opcode[7:4] | operand[3:0]) | Mnemonic | Operand meaning | Action (one clock cycle) |
+// |--------------|----------------------|----------|----------|------------------|--------------------------|
+// | 0x0 | `0000 xxxx` | **NOP** | – | No operation |
+// | 0x1 | `0001 xxxx` | **LDHI #imm4** | imm4 = operand | MAR[7:4] ← imm4  (MAR = Memory‑Address Register) |
+// | 0x2 | `0010 xxxx` | **LDLO #imm4** | imm4 = operand | MAR[3:0] ← imm4 |
+// | 0x3 | `0011 xxxx` | **LOAD** | – | ACC ← RAM[MAR] |
+// | 0x4 | `0100 xxxx` | **STORE** | – | RAM[MAR] ← ACC |
+// | 0x5 | `0101 xxxx` | **ADD #imm4** | imm4 = operand (0‑15) | ACC ← ACC + imm4  (set Z,N,C) |
+// | 0x6 | `0110 xxxx` | **SUB #imm4** | imm4 = operand | ACC ← ACC – imm4  (set Z,N,C) |
+// | 0x7 | `0111 xxxx` | **AND #imm4** | imm4 = operand | ACC ← ACC & imm4  (set Z,N) |
+// | 0x8 | `1000 xxxx` | **OR  #imm4** | imm4 = operand | ACC ← ACC \| imm4  (set Z,N) |
+// | 0x9 | `1001 xxxx` | **XOR #imm4** | imm4 = operand | ACC ← ACC ^ imm4  (set Z,N) |
+// | 0xA | `1010 xxxx` | **JMP rel4** | rel4 = signed 4‑bit (‑8…+7) | PC ← PC + 1 + sign‑extend(rel4) |
+// | 0xB | `1011 xxxx` | **JZ rel4** | rel4 = signed 4‑bit | if Z=1 then PC ← PC + 1 + sign‑extend(rel4) |
+// | 0xC | `1100 xxxx` | **JC rel4** | rel4 = signed 4‑bit | if C=1 then PC ← PC + 1 + sign‑extend(rel4) |
+// | 0xD | `1101 xxxx` | **CALL rel4** | rel4 = signed 4‑bit | push (PC+1) onto stack; PC ← PC + 1 + sign‑extend(rel4) |
+// | 0xE | `1110 xxxx` | **RET** | – | PC ← pop from stack |
+// | 0xF | `1111 bppp` | **IO** | b = direction (0=IN,1=OUT)  <br> ppp = port number (0‑7) | if b=0: ACC ← IO_PORT[ppp]  <br> if b=1: IO_PORT[ppp] ← ACC |
+//
+// *All arithmetic/logic instructions update Z (zero) and N (negative‑flag = MSB of result).  
+// ADD/SUB also update C (carry out of the MSB).  
+// The stack is located in the data RAM; the stack pointer is maintained in software (e.g., reserve the top 16 bytes).*
+//
+// ---
+//
+// ### 2. Programmer‑Visible Registers
+//
+// | Register | Width | Description |
+// |----------|-------|-------------|
+// | **ACC**  | 8 bit | Accumulator – source/destination for ALU, load/store, I/O |
+// | **MAR**  | 8 bit | Memory‑Address Register (built from two 4‑bit halves: MARH = MAR[7:4], MARL = MAR[3:0]) |
+// | **FLAGS**| 4 bit | Z (zero), N (negative), C (carry), V (overflow – optional, can be omitted) |
+// | **PC**   | 8 bit | Program Counter (points to instruction ROM) |
+// | **IR**   | 8 bit | Instruction Register (internal, not visible to software) |
+//
+// *Total flip‑flops ≈ 8+8+4+8+8 = 36 FFs → ≈ 200‑250 cells in a typical 65 nm library.*
+//
+// ---
+//
+// ### 3. Memory Organisation
+//
+// | Memory | Size | Access | Remarks |
+// |--------|------|--------|---------|
+// | **Instruction ROM** | 256 × 8 bits (read‑only) | Address = **PC** (8 bit) → data → IR | Harvard‑style; can be implemented as a synchronous ROM macro. |
+// | **Data RAM** | 256 × 8 bits (read/write) | Address = **MAR** (8 bit) → data bus | Used for variables, stack, and memory‑mapped I/O if desired. |
+// | **I/O ports** | 8 × 8‑bit registers (optional) | Selected by **IO** instruction (port 0‑7) | No extra CPU registers needed; the ACC drives the port directly. |
+//
+// *Both ROM and RAM are assumed to be provided as hard macros by the ASIC library; they do not consume standard‑cell count.*
+
+module cpu8_acc (
+    input  wire        clk,          // system clock
+    input  wire        rst_n,        // active‑low asynchronous reset
+
+    // ----- Instruction ROM (read‑only) -----
+    output wire [7:0]  imem_addr,    // address to ROM
+    input  wire [7:0]  imem_data,    // data from ROM
+
+    // ----- Data RAM (read/write) -----
+    output wire [7:0]  dmem_addr,    // address to RAM
+    inout  wire [7:0]  dmem_data,    // bidirectional data bus
+    output wire        dmem_we,      // 1 = write, 0 = read
+
+    // ----- Simple memory‑mapped I/O (port‑mapped) -----
+    output wire [2:0]  io_port,      // 3‑bit port selector (0‑7)
+    output wire        io_wr,        // write strobe (high during OUT)
+    input  wire [7:0]  io_data_in,   // data from external pins
+    output wire [7:0]  io_data_out   // data driven to external pins
+);
+
+assistant: 
+user: No modules found in response
+assistant: module cpu8_acc (
+    input  wire        clk,
+    input  wire        rst_n,
+
+    // Instruction ROM
+    output wire [7:0]  imem_addr,
+    input  wire [7:0]  imem_data,
+
+    // Data RAM
+    output wire [7:0]  dmem_addr,
+    inout  wire [7:0]  dmem_data,
+    output wire        dmem_we,
+
+    // Simple I/O
+    output wire [2:0]  io_port,
+    output wire        io_wr,
+    input  wire [7:0]  io_data_in,
+    output wire [7:0]  io_data_out
+);
+    // -----------------------------------------------------------------
+    // Internal registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC;        // Accumulator
+    reg  [7:0] MAR;        // Memory Address Register
+    reg  [2:0] FLAGS;      // {Z, N, C}
+    reg  [7:0] PC;         // Program Counter
+    reg  [7:0] IR;         // Instruction Register
+    reg  [7:0] SP;         // Stack Pointer (points to next free location)
+
+    // -----------------------------------------------------------------
+    // Wire declarations for decoding
+    // -----------------------------------------------------------------
+    wire [3:0] opcode = IR[7:4];
+    wire [3:0] operand = IR[3:0];
+
+    wire [7:0] imm4        = {4'b0, operand};               // zero‑extended 4‑bit immediate
+    wire [7:0] imm4_se     = {{4{operand[3]}}, operand};    // sign‑extended 4‑bit immediate
+    wire [7:0] pc_plus_1   = PC + 8'd1;
+    wire [7:0] branch_target = pc_plus_1 + imm4_se;
+
+    // FLAGS bit positions: [2] = Z, [1] = N, [0] = C
+    wire Z = FLAGS[2];
+    wire N = FLAGS[1];
+    wire C = FLAGS[0];
+
+    // -----------------------------------------------------------------
+    // Memory port handling (inout)
+    // -----------------------------------------------------------------
+    wire [7:0] dmem_data_in = dmem_data;
+    assign dmem_data = dmem_we ? dmem_data_out : 8'bz;
+
+    // -----------------------------------------------------------------
+    // Combinational next‑state and control logic
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC_next;
+    reg  [7:0] MAR_next;
+    reg  [2:0] FLAGS_next;
+    reg  [7:0] PC_next;
+    reg  [7:0] SP_next;
+    reg  [7:0] dmem_addr_reg;
+    reg        dmem_we_reg;
+    reg  [7:0] dmem_data_out_reg;
+    reg  [2:0] io_port_reg;
+    reg        io_wr_reg;
+    reg  [7:0] io_data_out_reg;
+
+    always @* begin
+        // Defaults (hold values, no memory activity, no I/O)
+        ACC_next   = ACC;
+        MAR_next   = MAR;
+        FLAGS_next = FLAGS;
+        PC_next    = pc_plus_1;        // default: PC+1
+        SP_next    = SP;
+        dmem_addr_reg  = 8'd0;
+        dmem_we_reg    = 1'b0;
+        dmem_data_out_reg = 8'd0;
+        io_port_reg    = 3'd0;
+        io_wr_reg      = 1'b0;
+        io_data_out_reg = 8'd0;
+
+        case (opcode)
+            4'h0: ; // NOP
+
+            4'h1: MAR_next = {operand, MAR[3:0]};          // LDHI
+
+            4'h2: MAR_next = {MAR[7:4], operand};          // LDLO
+
+            4'h3: begin // LOAD
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b0;
+                    ACC_next      = dmem_data_in;
+                  end
+
+            4'h4: begin // STORE
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out_reg = ACC;
+                  end
+
+            4'h5: begin // ADD #imm4
+                    wire [8:0] sum = ACC + imm4;
+                    ACC_next = sum[7:0];
+                    FLAGS_next = { (sum[7:0] == 8'd0), sum[7], sum[8] }; // Z,N,C
+                  end
+
+            4'h6: begin // SUB #imm4
+                    wire [8:0] diff = ACC - imm4;
+                    ACC_next = diff[7:0];
+                    FLAGS_next = { (diff[7:0] == 8'd0), diff[7], ~diff[8] }; // Z,N,C (C=~borrow)
+                  end
+
+            4'h7: begin // AND #imm4
+                    ACC_next = ACC & imm4;
+                    FLAGS_next = { ((ACC & imm4) == 8'd0), (ACC & imm4)[7], FLAGS[0] }; // Z,N (C unchanged)
+                  end
+
+            4'h8: begin // OR #imm4
+                    ACC_next = ACC | imm4;
+                    FLAGS_next = { ((ACC | imm4) == 8'd0), (ACC | imm4)[7], FLAGS[0] };
+                  end
+
+            4'h9: begin // XOR #imm4
+                    ACC_next = ACC ^ imm4;
+                    FLAGS_next = { ((ACC ^ imm4) == 8'd0), (ACC ^ imm4)[7], FLAGS[0] };
+                  end
+
+            4'hA: begin // JMP rel4
+                    PC_next = branch_target;
+                  end
+
+            4'hB: begin // JZ rel4
+                    if (Z) PC_next = branch_target;
+                  end
+
+            4'hC: begin // JC rel4
+                    if (C) PC_next = branch_target;
+                  end
+
+            4'hD: begin // CALL rel4
+                    // Push PC+1 onto stack (stack grows down)
+                    dmem_addr_reg = SP - 8'd1;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out_reg = pc_plus_1;
+                    SP_next    = SP - 8'd1;
+                    PC_next    = branch_target;
+                  end
+
+            4'hE: begin // RET
+                    // Pop from stack
+                    dmem_addr_reg = SP;
+                    dmem_we_reg   = 1'b0;
+                    PC_next       = dmem_data_in;
+                    SP_next       = SP + 8'd1;
+                  end
+
+            4'hF: begin // IO
+                    io_port_reg = operand[2:0];
+                    if (operand[3]) begin // b=1 → OUT
+                        io_wr_reg   = 1'b1;
+                        io_data_out_reg = ACC;
+                    end else begin // b=0 → IN
+                        ACC_next = io_data_in;
+                    end
+                  end
+        endcase
+    end
+
+    // -----------------------------------------------------------------
+    // Sequential logic (state update on clock edge)
+    // -----------------------------------------------------------------
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ACC   <= 8'd0;
+            MAR   <= 8'd0;
+            FLAGS <= 3'd0;
+            PC    <= 8'd0;
+            IR    <= 8'd0;
+            SP    <= 8'hFF;          // initialise stack pointer to top of RAM
+        end else begin
+            ACC   <= ACC_next;
+            MAR   <= MAR_next;
+            FLAGS <= FLAGS_next;
+            PC    <= PC_next;
+            IR    <= imem_data;      // fetch instruction (ROM assumed combinational)
+            SP    <= SP_next;
+        end
+    end
+
+    // -----------------------------------------------------------------
+    // Output assignments
+    // -----------------------------------------------------------------
+    assign imem_addr   = PC;
+    assign dmem_addr   = dmem_addr_reg;
+    assign dmem_we     = dmem_we_reg;
+    assign dmem_data_out = dmem_data_out_reg;
+    assign io_port     = io_port_reg;
+    assign io_wr       = io_wr_reg;
+    assign io_data_out = io_data_out_reg;
+endmodule
+
+
+user: The design failed to compile. Please fix the module. The output of iverilog is as follows:
+outputs_cpu8/iter1/response4/cpu8_acc.sv:101: syntax error
+outputs_cpu8/iter1/response4/cpu8_acc.sv:101: Syntax in assignment statement l-value.
+outputs_cpu8/iter1/response4/cpu8_acc.sv:107: syntax error
+outputs_cpu8/iter1/response4/cpu8_acc.sv:107: Syntax in assignment statement l-value.
+outputs_cpu8/iter1/response4/cpu8_acc.sv:114: syntax error
+outputs_cpu8/iter1/response4/cpu8_acc.sv:114: error: Malformed statement
+outputs_cpu8/iter1/response4/cpu8_acc.sv:119: syntax error
+outputs_cpu8/iter1/response4/cpu8_acc.sv:119: error: Malformed statement
+outputs_cpu8/iter1/response4/cpu8_acc.sv:124: syntax error
+outputs_cpu8/iter1/response4/cpu8_acc.sv:124: error: Malformed statement
+outputs_cpu8/iter1/response4/cpu8_acc.sv:195: warning: implicit definition of wire 'dmem_data_out'.
+
+assistant: module cpu8_acc (
+    input  wire        clk,
+    input  wire        rst_n,
+
+    // Instruction ROM
+    output wire [7:0]  imem_addr,
+    input  wire [7:0]  imem_data,
+
+    // Data RAM
+    output wire [7:0]  dmem_addr,
+    inout  wire [7:0]  dmem_data,
+    output wire        dmem_we,
+
+    // Simple I/O
+    output wire [2:0]  io_port,
+    output wire        io_wr,
+    input  wire [7:0]  io_data_in,
+    output wire [7:0]  io_data_out
+);
+    // -----------------------------------------------------------------
+    // Internal registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC;        // Accumulator
+    reg  [7:0] MAR;        // Memory Address Register
+    reg  [2:0] FLAGS;      // {Z, N, C}
+    reg  [7:0] PC;         // Program Counter
+    reg  [7:0] IR;         // Instruction Register
+    reg  [7:0] SP;         // Stack Pointer (points to next free location)
+
+    // -----------------------------------------------------------------
+    // Combinational next-state and control logic
+    // -----------------------------------------------------------------
+    wire [3:0] opcode = IR[7:4];
+    wire [3:0] operand = IR[3:0];
+
+    wire [7:0] imm4        = {4'b0, operand};
+    wire [7:0] imm4_se     = {{4{operand[3]}}, operand};
+    wire [7:0] pc_plus_1   = PC + 8'd1;
+    wire [7:0] branch_target = pc_plus_1 + imm4_se;
+
+    wire Z = FLAGS[2];
+    wire N = FLAGS[1];
+    wire C = FLAGS[0];
+
+    // -----------------------------------------------------------------
+    // Next-state registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC_next;
+    reg  [7:0] MAR_next;
+    reg  [2:0] FLAGS_next;
+    reg  [7:0] PC_next;
+    reg  [7:0] SP_next;
+
+    // Memory control
+    reg  [7:0] dmem_addr_reg;
+    reg        dmem_we_reg;
+    reg  [7:0] dmem_data_out;
+
+    // I/O control
+    reg  [2:0] io_port_reg;
+    reg        io_wr_reg;
+    reg  [7:0] io_data_out_reg;
+
+    always @* begin
+        // Defaults (hold values, no memory activity, no I/O)
+        ACC_next   = ACC;
+        MAR_next   = MAR;
+        FLAGS_next = FLAGS;
+        PC_next    = pc_plus_1;        // default: PC+1
+        SP_next    = SP;
+        dmem_addr_reg  = 8'd0;
+        dmem_we_reg    = 1'b0;
+        dmem_data_out  = 8'd0;
+        io_port_reg    = 3'd0;
+        io_wr_reg      = 1'b0;
+        io_data_out_reg = 8'd0;
+
+        case (opcode)
+            4'h0: ; // NOP
+
+            4'h1: MAR_next = {operand, MAR[3:0]};          // LDHI
+
+            4'h2: MAR_next = {MAR[7:4], operand};          // LDLO
+
+            4'h3: begin // LOAD
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b0;
+                    ACC_next      = dmem_data;
+                  end
+
+            4'h4: begin // STORE
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = ACC;
+                  end
+
+            4'h5: begin // ADD #imm4
+                    wire [8:0] sum = ACC + imm4;
+                    ACC_next = sum[7:0];
+                    FLAGS_next = { (sum[7:0] == 8'd0), sum[7], sum[8] }; // Z,N,C
+                  end
+
+            4'h6: begin // SUB #imm4
+                    wire [8:0] diff = ACC - imm4;
+                    ACC_next = diff[7:0];
+                    FLAGS_next = { (diff[7:0] == 8'd0), diff[7], ~diff[8] }; // Z,N,C (C=~borrow)
+                  end
+
+            4'h7: begin // AND #imm4
+                    ACC_next = ACC & imm4;
+                    FLAGS_next = { ((ACC & imm4) == 8'd0), (ACC & imm4)[7], FLAGS[0] }; // Z,N (C unchanged)
+                  end
+
+            4'h8: begin // OR #imm4
+                    ACC_next = ACC | imm4;
+                    FLAGS_next = { ((ACC | imm4) == 8'd0), (ACC | imm4)[7], FLAGS[0] };
+                  end
+
+            4'h9: begin // XOR #imm4
+                    ACC_next = ACC ^ imm4;
+                    FLAGS_next = { ((ACC ^ imm4) == 8'd0), (ACC ^ imm4)[7], FLAGS[0] };
+                  end
+
+            4'hA: begin // JMP rel4
+                    PC_next = branch_target;
+                  end
+
+            4'hB: begin // JZ rel4
+                    if (Z) PC_next = branch_target;
+                  end
+
+            4'hC: begin // JC rel4
+                    if (C) PC_next = branch_target;
+                  end
+
+            4'hD: begin // CALL rel4
+                    // Push PC+1 onto stack (stack grows down)
+                    dmem_addr_reg = SP - 8'd1;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = pc_plus_1;
+                    SP_next    = SP - 8'd1;
+                    PC_next    = branch_target;
+                  end
+
+            4'hE: begin // RET
+                    // Pop from stack
+                    dmem_addr_reg = SP;
+                    dmem_we_reg   = 1'b0;
+                    PC_next       = dmem_data;
+                    SP_next       = SP + 8'd1;
+                  end
+
+            4'hF: begin // IO
+                    io_port_reg = operand[2:0];
+                    if (operand[3]) begin // b=1 → OUT
+                        io_wr_reg   = 1'b1;
+                        io_data_out_reg = ACC;
+                    end else begin // b=0 → IN
+                        ACC_next = dmem_data; // Actually io_data_in, but we don't have that name; use external input
+                    end
+                  end
+        endcase
+    end
+
+    // -----------------------------------------------------------------
+    // Sequential logic (state update on clock edge)
+    // -----------------------------------------------------------------
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ACC   <= 8'd0;
+            MAR   <= 8'd0;
+            FLAGS <= 3'd0;
+            PC    <= 8'd0;
+            IR    <= 8'd0;
+            SP    <= 8'hFF;          // initialise stack pointer to top of RAM
+        end else begin
+            ACC   <= ACC_next;
+            MAR   <= MAR_next;
+            FLAGS <= FLAGS_next;
+            PC    <= PC_next;
+            IR    <= imem_data;      // fetch instruction (ROM assumed combinational)
+            SP    <= SP_next;
+        end
+    end
+
+    // -----------------------------------------------------------------
+    // Output assignments
+    // -----------------------------------------------------------------
+    assign imem_addr   = PC;
+    assign dmem_addr   = dmem_addr_reg;
+    assign dmem_we     = dmem_we_reg;
+    assign dmem_data   = dmem_we_reg ? dmem_data_out : 8'bz;
+    assign io_port     = io_port_reg;
+    assign io_wr       = io_wr_reg;
+    assign io_data_out = io_data_out_reg;
+endmodule
+
+
+user: The design failed to compile. Please fix the module. The output of iverilog is as follows:
+outputs_cpu8/iter2/response4/cpu8_acc.sv:98: syntax error
+outputs_cpu8/iter2/response4/cpu8_acc.sv:98: Syntax in assignment statement l-value.
+outputs_cpu8/iter2/response4/cpu8_acc.sv:104: syntax error
+outputs_cpu8/iter2/response4/cpu8_acc.sv:104: Syntax in assignment statement l-value.
+outputs_cpu8/iter2/response4/cpu8_acc.sv:111: syntax error
+outputs_cpu8/iter2/response4/cpu8_acc.sv:111: error: Malformed statement
+outputs_cpu8/iter2/response4/cpu8_acc.sv:116: syntax error
+outputs_cpu8/iter2/response4/cpu8_acc.sv:116: error: Malformed statement
+outputs_cpu8/iter2/response4/cpu8_acc.sv:121: syntax error
+outputs_cpu8/iter2/response4/cpu8_acc.sv:121: error: Malformed statement
+
+assistant: module cpu8_acc (
+    input  wire        clk,
+    input  wire        rst_n,
+
+    // Instruction ROM
+    output wire [7:0]  imem_addr,
+    input  wire [7:0]  imem_data,
+
+    // Data RAM
+    output wire [7:0]  dmem_addr,
+    inout  wire [7:0]  dmem_data,
+    output wire        dmem_we,
+
+    // Simple I/O
+    output wire [2:0]  io_port,
+    output wire        io_wr,
+    input  wire [7:0]  io_data_in,
+    output wire [7:0]  io_data_out
+);
+    // -----------------------------------------------------------------
+    // Internal registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC;        // Accumulator
+    reg  [7:0] MAR;        // Memory Address Register
+    reg  [2:0] FLAGS;      // {Z, N, C}
+    reg  [7:0] PC;         // Program Counter
+    reg  [7:0] IR;         // Instruction Register
+    reg  [7:0] SP;         // Stack Pointer (points to next free location)
+
+    // -----------------------------------------------------------------
+    // Combinational next-state and control logic
+    // -----------------------------------------------------------------
+    wire [3:0] opcode = IR[7:4];
+    wire [3:0] operand = IR[3:0];
+
+    wire [7:0] imm4        = {4'b0, operand};
+    wire [7:0] imm4_se     = {{4{operand[3]}}, operand};
+    wire [7:0] pc_plus_1   = PC + 8'd1;
+    wire [7:0] branch_target = pc_plus_1 + imm4_se;
+
+    wire Z = FLAGS[2];
+    wire N = FLAGS[1];
+    wire C = FLAGS[0];
+
+    // -----------------------------------------------------------------
+    // Next-state registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC_next;
+    reg  [7:0] MAR_next;
+    reg  [2:0] FLAGS_next;
+    reg  [7:0] PC_next;
+    reg  [7:0] SP_next;
+
+    // Memory control
+    reg  [7:0] dmem_addr_reg;
+    reg        dmem_we_reg;
+    reg  [7:0] dmem_data_out;
+
+    // I/O control
+    reg  [2:0] io_port_reg;
+    reg        io_wr_reg;
+    reg  [7:0] io_data_out_reg;
+
+    always @* begin
+        // Defaults (hold values, no memory activity, no I/O)
+        ACC_next   = ACC;
+        MAR_next   = MAR;
+        FLAGS_next = FLAGS;
+        PC_next    = pc_plus_1;        // default: PC+1
+        SP_next    = SP;
+        dmem_addr_reg  = 8'd0;
+        dmem_we_reg    = 1'b0;
+        dmem_data_out  = 8'd0;
+        io_port_reg    = 3'd0;
+        io_wr_reg      = 1'b0;
+        io_data_out_reg = 8'd0;
+
+        case (opcode)
+            4'h0: ; // NOP
+
+            4'h1: MAR_next = {operand, MAR[3:0]};          // LDHI
+
+            4'h2: MAR_next = {MAR[7:4], operand};          // LDLO
+
+            4'h3: begin // LOAD
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b0;
+                    ACC_next      = dmem_data;
+                  end
+
+            4'h4: begin // STORE
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = ACC;
+                  end
+
+            4'h5: begin // ADD #imm4
+                    logic [8:0] sum = ACC + imm4;
+                    ACC_next = sum[7:0];
+                    FLAGS_next = { (sum[7:0] == 8'd0), sum[7], sum[8] };
+                  end
+
+            4'h6: begin // SUB #imm4
+                    logic [8:0] diff = ACC - imm4;
+                    ACC_next = diff[7:0];
+                    FLAGS_next = { (diff[7:0] == 8'd0), diff[7], ~diff[8] };
+                  end
+
+            4'h7: begin // AND #imm4
+                    ACC_next = ACC & imm4;
+                    FLAGS_next = { ((ACC & imm4) == 8'd0), (ACC & imm4)[7], FLAGS[0] };
+                  end
+
+            4'h8: begin // OR #imm4
+                    ACC_next = ACC | imm4;
+                    FLAGS_next = { ((ACC | imm4) == 8'd0), (ACC | imm4)[7], FLAGS[0] };
+                  end
+
+            4'h9: begin // XOR #imm4
+                    ACC_next = ACC ^ imm4;
+                    FLAGS_next = { ((ACC ^ imm4) == 8'd0), (ACC ^ imm4)[7], FLAGS[0] };
+                  end
+
+            4'hA: begin // JMP rel4
+                    PC_next = branch_target;
+                  end
+
+            4'hB: begin // JZ rel4
+                    if (Z) PC_next = branch_target;
+                  end
+
+            4'hC: begin // JC rel4
+                    if (C) PC_next = branch_target;
+                  end
+
+            4'hD: begin // CALL rel4
+                    // Push PC+1 onto stack (stack grows down)
+                    dmem_addr_reg = SP - 8'd1;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = pc_plus_1;
+                    SP_next    = SP - 8'd1;
+                    PC_next    = branch_target;
+                  end
+
+            4'hE: begin // RET
+                    // Pop from stack
+                    dmem_addr_reg = SP;
+                    dmem_we_reg   = 1'b0;
+                    PC_next       = dmem_data;
+                    SP_next       = SP + 8'd1;
+                  end
+
+            4'hF: begin // IO
+                    io_port_reg = operand[2:0];
+                    if (operand[3]) begin // b=1 → OUT
+                        io_wr_reg   = 1'b1;
+                        io_data_out_reg = ACC;
+                    end else begin // b=0 → IN
+                        ACC_next = io_data_in;
+                    end
+                  end
+        endcase
+    end
+
+    // -----------------------------------------------------------------
+    // Sequential logic (state update on clock edge)
+    // -----------------------------------------------------------------
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ACC   <= 8'd0;
+            MAR   <= 8'd0;
+            FLAGS <= 3'd0;
+            PC    <= 8'd0;
+            IR    <= 8'd0;
+            SP    <= 8'hFF;          // initialise stack pointer to top of RAM
+        end else begin
+            ACC   <= ACC_next;
+            MAR   <= MAR_next;
+            FLAGS <= FLAGS_next;
+            PC    <= PC_next;
+            IR    <= imem_data;      // fetch instruction (ROM assumed combinational)
+            SP    <= SP_next;
+        end
+    end
+
+    // -----------------------------------------------------------------
+    // Output assignments
+    // -----------------------------------------------------------------
+    assign imem_addr   = PC;
+    assign dmem_addr   = dmem_addr_reg;
+    assign dmem_we     = dmem_we_reg;
+    assign dmem_data   = dmem_we_reg ? dmem_data_out : 8'bz;
+    assign io_port     = io_port_reg;
+    assign io_wr       = io_wr_reg;
+    assign io_data_out = io_data_out_reg;
+endmodule
+
+
+user: The design failed to compile. Please fix the module. The output of iverilog is as follows:
+outputs_cpu8/iter3/response4/cpu8_acc.sv:98: warning: Static variable initialization requires explicit lifetime in this context.
+outputs_cpu8/iter3/response4/cpu8_acc.sv:104: warning: Static variable initialization requires explicit lifetime in this context.
+outputs_cpu8/iter3/response4/cpu8_acc.sv:111: syntax error
+outputs_cpu8/iter3/response4/cpu8_acc.sv:111: error: Malformed statement
+outputs_cpu8/iter3/response4/cpu8_acc.sv:116: syntax error
+outputs_cpu8/iter3/response4/cpu8_acc.sv:116: error: Malformed statement
+outputs_cpu8/iter3/response4/cpu8_acc.sv:121: syntax error
+outputs_cpu8/iter3/response4/cpu8_acc.sv:121: error: Malformed statement
+
+assistant: module cpu8_acc (
+    input  wire        clk,
+    input  wire        rst_n,
+
+    // Instruction ROM
+    output wire [7:0]  imem_addr,
+    input  wire [7:0]  imem_data,
+
+    // Data RAM
+    output wire [7:0]  dmem_addr,
+    inout  wire [7:0]  dmem_data,
+    output wire        dmem_we,
+
+    // Simple I/O
+    output wire [2:0]  io_port,
+    output wire        io_wr,
+    input  wire [7:0]  io_data_in,
+    output wire [7:0]  io_data_out
+);
+    // -----------------------------------------------------------------
+    // Internal registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC;        // Accumulator
+    reg  [7:0] MAR;        // Memory Address Register
+    reg  [2:0] FLAGS;      // {Z, N, C}
+    reg  [7:0] PC;         // Program Counter
+    reg  [7:0] IR;         // Instruction Register
+    reg  [7:0] SP;         // Stack Pointer (points to next free location)
+
+    // -----------------------------------------------------------------
+    // Combinational next-state and control logic
+    // -----------------------------------------------------------------
+    wire [3:0] opcode = IR[7:4];
+    wire [3:0] operand = IR[3:0];
+
+    wire [7:0] imm4        = {4'b0, operand};
+    wire [7:0] imm4_se     = {{4{operand[3]}}, operand};
+    wire [7:0] pc_plus_1   = PC + 8'd1;
+    wire [7:0] branch_target = pc_plus_1 + imm4_se;
+
+    wire Z = FLAGS[2];
+    wire N = FLAGS[1];
+    wire C = FLAGS[0];
+
+    // -----------------------------------------------------------------
+    // Next-state registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC_next;
+    reg  [7:0] MAR_next;
+    reg  [2:0] FLAGS_next;
+    reg  [7:0] PC_next;
+    reg  [7:0] SP_next;
+
+    // Memory control
+    reg  [7:0] dmem_addr_reg;
+    reg        dmem_we_reg;
+    reg  [7:0] dmem_data_out;
+
+    // I/O control
+    reg  [2:0] io_port_reg;
+    reg        io_wr_reg;
+    reg  [7:0] io_data_out_reg;
+
+    always @* begin
+        // Defaults (hold values, no memory activity, no I/O)
+        ACC_next   = ACC;
+        MAR_next   = MAR;
+        FLAGS_next = FLAGS;
+        PC_next    = pc_plus_1;        // default: PC+1
+        SP_next    = SP;
+        dmem_addr_reg  = 8'd0;
+        dmem_we_reg    = 1'b0;
+        dmem_data_out  = 8'd0;
+        io_port_reg    = 3'd0;
+        io_wr_reg      = 1'b0;
+        io_data_out_reg = 8'd0;
+
+        case (opcode)
+            4'h0: ; // NOP
+
+            4'h1: MAR_next = {operand, MAR[3:0]};          // LDHI
+
+            4'h2: MAR_next = {MAR[7:4], operand};          // LDLO
+
+            4'h3: begin // LOAD
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b0;
+                    ACC_next      = dmem_data;
+                  end
+
+            4'h4: begin // STORE
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = ACC;
+                  end
+
+            4'h5: begin // ADD #imm4
+                    reg [8:0] sum;
+                    sum = ACC + imm4;
+                    ACC_next = sum[7:0];
+                    FLAGS_next = { (sum[7:0] == 8'd0), sum[7], sum[8] };
+                  end
+
+            4'h6: begin // SUB #imm4
+                    reg [8:0] diff;
+                    diff = ACC - imm4;
+                    ACC_next = diff[7:0];
+                    FLAGS_next = { (diff[7:0] == 8'd0), diff[7], ~diff[8] };
+                  end
+
+            4'h7: begin // AND #imm4
+                    reg [7:0] and_res;
+                    and_res = ACC & imm4;
+                    ACC_next = and_res;
+                    FLAGS_next = { (and_res == 8'd0), and_res[7], FLAGS[0] };
+                  end
+
+            4'h8: begin // OR #imm4
+                    reg [7:0] or_res;
+                    or_res = ACC | imm4;
+                    ACC_next = or_res;
+                    FLAGS_next = { (or_res == 8'd0), or_res[7], FLAGS[0] };
+                  end
+
+            4'h9: begin // XOR #imm4
+                    reg [7:0] xor_res;
+                    xor_res = ACC ^ imm4;
+                    ACC_next = xor_res;
+                    FLAGS_next = { (xor_res == 8'd0), xor_res[7], FLAGS[0] };
+                  end
+
+            4'hA: begin // JMP rel4
+                    PC_next = branch_target;
+                  end
+
+            4'hB: begin // JZ rel4
+                    if (Z) PC_next = branch_target;
+                  end
+
+            4'hC: begin // JC rel4
+                    if (C) PC_next = branch_target;
+                  end
+
+            4'hD: begin // CALL rel4
+                    // Push PC+1 onto stack (stack grows down)
+                    dmem_addr_reg = SP - 8'd1;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = pc_plus_1;
+                    SP_next    = SP - 8'd1;
+                    PC_next    = branch_target;
+                  end
+
+            4'hE: begin // RET
+                    // Pop from stack
+                    dmem_addr_reg = SP;
+                    dmem_we_reg   = 1'b0;
+                    PC_next       = dmem_data;
+                    SP_next       = SP + 8'd1;
+                  end
+
+            4'hF: begin // IO
+                    io_port_reg = operand[2:0];
+                    if (operand[3]) begin // b=1 → OUT
+                        io_wr_reg   = 1'b1;
+                        io_data_out_reg = ACC;
+                    end else begin // b=0 → IN
+                        ACC_next = io_data_in;
+                    end
+                  end
+        endcase
+    end
+
+    // -----------------------------------------------------------------
+    // Sequential logic (state update on clock edge)
+    // -----------------------------------------------------------------
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ACC   <= 8'd0;
+            MAR   <= 8'd0;
+            FLAGS <= 3'd0;
+            PC    <= 8'd0;
+            IR    <= 8'd0;
+            SP    <= 8'hFF;          // initialise stack pointer to top of RAM
+        end else begin
+            ACC   <= ACC_next;
+            MAR   <= MAR_next;
+            FLAGS <= FLAGS_next;
+            PC    <= PC_next;
+            IR    <= imem_data;      // fetch instruction (ROM assumed combinational)
+            SP    <= SP_next;
+        end
+    end
+
+    // -----------------------------------------------------------------
+    // Output assignments
+    // -----------------------------------------------------------------
+    assign imem_addr   = PC;
+    assign dmem_addr   = dmem_addr_reg;
+    assign dmem_we     = dmem_we_reg;
+    assign dmem_data   = dmem_we_reg ? dmem_data_out : 8'bz;
+    assign io_port     = io_port_reg;
+    assign io_wr       = io_wr_reg;
+    assign io_data_out = io_data_out_reg;
+endmodule
+
+
+user: The testbench simulated, but had errors. Please fix the module. The output of iverilog is as follows:
+Error: number of OUTs = 1, expected 3
+Error: OUT #1 = x, expected 2
+Error: OUT #2 = x, expected 1
+Error: RAM[5] = 3, expected 9
+Program (ROM address: byte instruction): 0:10 LDHI 0 | 1:25 LDLO 5 | 2:30 LOAD | 3:F9 OUT port 1 | 4:61 SUB 1 | 5:B1 JZ +1 | 6:AC JMP -4 | 7:59 ADD 9 | 8:40 STORE | 9:AF JMP -1. RAM[5] starts at 3.
+Expected instruction address order: 0 1 2 3 4 5 6 3 4 5 6 3 4 5 7 8 9
+Actual instruction addresses fetched (imem_addr): 0 1 2 3 4 5 6 7 4 5 6 7 4 5 6 7 4 5 6 7 4 5 6 7
+RAM writes (address=data): none   (expected: 5=9)
+./cpu8_tb.sv:109: $finish called at 3010000 (1ps)
+Mismatches: 4 in 5 samples
+
+assistant: module cpu8_acc (
+    input  wire        clk,
+    input  wire        rst_n,
+
+    // Instruction ROM
+    output wire [7:0]  imem_addr,
+    input  wire [7:0]  imem_data,
+
+    // Data RAM
+    output wire [7:0]  dmem_addr,
+    inout  wire [7:0]  dmem_data,
+    output wire        dmem_we,
+
+    // Simple I/O
+    output wire [2:0]  io_port,
+    output wire        io_wr,
+    input  wire [7:0]  io_data_in,
+    output wire [7:0]  io_data_out
+);
+    // -----------------------------------------------------------------
+    // Programmer-visible registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC;        // Accumulator
+    reg  [7:0] MAR;        // Memory Address Register
+    reg  [2:0] FLAGS;      // {Z, N, C}
+    reg  [7:0] PC;         // Program Counter
+    reg  [7:0] SP;         // Stack Pointer (points to next free location)
+
+    // -----------------------------------------------------------------
+    // Combinational next-state and control logic
+    // -----------------------------------------------------------------
+    wire [7:0] ir = imem_data;          // use fetched instruction directly
+    wire [3:0] opcode = ir[7:4];
+    wire [3:0] operand = ir[3:0];
+
+    wire [7:0] imm4        = {4'b0, operand};
+    wire [7:0] imm4_se     = {{4{operand[3]}}, operand};
+    wire [7:0] pc_plus_1   = PC + 8'd1;
+    wire [7:0] branch_target = pc_plus_1 + imm4_se;
+
+    wire Z = FLAGS[2];
+    wire N = FLAGS[1];
+    wire C = FLAGS[0];
+
+    // -----------------------------------------------------------------
+    // Next-state registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC_next;
+    reg  [7:0] MAR_next;
+    reg  [2:0] FLAGS_next;
+    reg  [7:0] PC_next;
+    reg  [7:0] SP_next;
+
+    // Memory control
+    reg  [7:0] dmem_addr_reg;
+    reg        dmem_we_reg;
+    reg  [7:0] dmem_data_out;
+
+    // I/O control
+    reg  [2:0] io_port_reg;
+    reg        io_wr_reg;
+    reg  [7:0] io_data_out_reg;
+
+    always @* begin
+        // Defaults (hold values, no memory activity, no I/O)
+        ACC_next   = ACC;
+        MAR_next   = MAR;
+        FLAGS_next = FLAGS;
+        PC_next    = pc_plus_1;        // default: PC+1
+        SP_next    = SP;
+        dmem_addr_reg  = 8'd0;
+        dmem_we_reg    = 1'b0;
+        dmem_data_out  = 8'd0;
+        io_port_reg    = 3'd0;
+        io_wr_reg      = 1'b0;
+        io_data_out_reg = 8'd0;
+
+        case (opcode)
+            4'h0: ; // NOP
+
+            4'h1: MAR_next = {operand, MAR[3:0]};          // LDHI
+
+            4'h2: MAR_next = {MAR[7:4], operand};          // LDLO
+
+            4'h3: begin // LOAD
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b0;
+                    ACC_next      = dmem_data;
+                  end
+
+            4'h4: begin // STORE
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = ACC;
+                  end
+
+            4'h5: begin // ADD #imm4
+                    reg [8:0] sum;
+                    sum = ACC + imm4;
+                    ACC_next = sum[7:0];
+                    FLAGS_next = { (sum[7:0] == 8'd0), sum[7], sum[8] };
+                  end
+
+            4'h6: begin // SUB #imm4
+                    reg [8:0] diff;
+                    diff = ACC - imm4;
+                    ACC_next = diff[7:0];
+                    FLAGS_next = { (diff[7:0] == 8'd0), diff[7], ~diff[8] };
+                  end
+
+            4'h7: begin // AND #imm4
+                    reg [7:0] and_res;
+                    and_res = ACC & imm4;
+                    ACC_next = and_res;
+                    FLAGS_next = { (and_res == 8'd0), and_res[7], FLAGS[0] };
+                  end
+
+            4'h8: begin // OR #imm4
+                    reg [7:0] or_res;
+                    or_res = ACC | imm4;
+                    ACC_next = or_res;
+                    FLAGS_next = { (or_res == 8'd0), or_res[7], FLAGS[0] };
+                  end
+
+            4'h9: begin // XOR #imm4
+                    reg [7:0] xor_res;
+                    xor_res = ACC ^ imm4;
+                    ACC_next = xor_res;
+                    FLAGS_next = { (xor_res == 8'd0), xor_res[7], FLAGS[0] };
+                  end
+
+            4'hA: begin // JMP rel4
+                    PC_next = branch_target;
+                  end
+
+            4'hB: begin // JZ rel4
+                    if (Z) PC_next = branch_target;
+                  end
+
+            4'hC: begin // JC rel4
+                    if (C) PC_next = branch_target;
+                  end
+
+            4'hD: begin // CALL rel4
+                    // Push PC+1 onto stack (stack grows down)
+                    dmem_addr_reg = SP - 8'd1;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = pc_plus_1;
+                    SP_next    = SP - 8'd1;
+                    PC_next    = branch_target;
+                  end
+
+            4'hE: begin // RET
+                    // Pop from stack
+                    dmem_addr_reg = SP;
+                    dmem_we_reg   = 1'b0;
+                    PC_next       = dmem_data;
+                    SP_next       = SP + 8'd1;
+                  end
+
+            4'hF: begin // IO
+                    io_port_reg = operand[2:0];
+                    if (operand[3]) begin // b=1 → OUT
+                        io_wr_reg   = 1'b1;
+                        io_data_out_reg = ACC;
+                    end else begin // b=0 → IN
+                        ACC_next = io_data_in;
+                    end
+                  end
+        endcase
+    end
+
+    // -----------------------------------------------------------------
+    // Sequential logic (state update on clock edge)
+    // -----------------------------------------------------------------
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ACC   <= 8'd0;
+            MAR   <= 8'd0;
+            FLAGS <= 3'd0;
+            PC    <= 8'd0;
+            SP    <= 8'hFF;          // initialise stack pointer to top of RAM
+        end else begin
+            ACC   <= ACC_next;
+            MAR   <= MAR_next;
+            FLAGS <= FLAGS_next;
+            PC    <= PC_next;
+            SP    <= SP_next;
+        end
+    end
+
+    // -----------------------------------------------------------------
+    // Output assignments
+    // -----------------------------------------------------------------
+    assign imem_addr   = PC;
+    assign dmem_addr   = dmem_addr_reg;
+    assign dmem_we     = dmem_we_reg;
+    assign dmem_data   = dmem_we_reg ? dmem_data_out : 8'bz;
+    assign io_port     = io_port_reg;
+    assign io_wr       = io_wr_reg;
+    assign io_data_out = io_data_out_reg;
+endmodule
+
+
+Time to Generate: 999.0231142044067
+Best ranked response at iteration 5 with response number 4
+Rank of best response: 1.0
+Best response module:
+module cpu8_acc (
+    input  wire        clk,
+    input  wire        rst_n,
+
+    // Instruction ROM
+    output wire [7:0]  imem_addr,
+    input  wire [7:0]  imem_data,
+
+    // Data RAM
+    output wire [7:0]  dmem_addr,
+    inout  wire [7:0]  dmem_data,
+    output wire        dmem_we,
+
+    // Simple I/O
+    output wire [2:0]  io_port,
+    output wire        io_wr,
+    input  wire [7:0]  io_data_in,
+    output wire [7:0]  io_data_out
+);
+    // -----------------------------------------------------------------
+    // Programmer-visible registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC;        // Accumulator
+    reg  [7:0] MAR;        // Memory Address Register
+    reg  [2:0] FLAGS;      // {Z, N, C}
+    reg  [7:0] PC;         // Program Counter
+    reg  [7:0] SP;         // Stack Pointer (points to next free location)
+
+    // -----------------------------------------------------------------
+    // Combinational next-state and control logic
+    // -----------------------------------------------------------------
+    wire [7:0] ir = imem_data;          // use fetched instruction directly
+    wire [3:0] opcode = ir[7:4];
+    wire [3:0] operand = ir[3:0];
+
+    wire [7:0] imm4        = {4'b0, operand};
+    wire [7:0] imm4_se     = {{4{operand[3]}}, operand};
+    wire [7:0] pc_plus_1   = PC + 8'd1;
+    wire [7:0] branch_target = pc_plus_1 + imm4_se;
+
+    wire Z = FLAGS[2];
+    wire N = FLAGS[1];
+    wire C = FLAGS[0];
+
+    // -----------------------------------------------------------------
+    // Next-state registers
+    // -----------------------------------------------------------------
+    reg  [7:0] ACC_next;
+    reg  [7:0] MAR_next;
+    reg  [2:0] FLAGS_next;
+    reg  [7:0] PC_next;
+    reg  [7:0] SP_next;
+
+    // Memory control
+    reg  [7:0] dmem_addr_reg;
+    reg        dmem_we_reg;
+    reg  [7:0] dmem_data_out;
+
+    // I/O control
+    reg  [2:0] io_port_reg;
+    reg        io_wr_reg;
+    reg  [7:0] io_data_out_reg;
+
+    always @* begin
+        // Defaults (hold values, no memory activity, no I/O)
+        ACC_next   = ACC;
+        MAR_next   = MAR;
+        FLAGS_next = FLAGS;
+        PC_next    = pc_plus_1;        // default: PC+1
+        SP_next    = SP;
+        dmem_addr_reg  = 8'd0;
+        dmem_we_reg    = 1'b0;
+        dmem_data_out  = 8'd0;
+        io_port_reg    = 3'd0;
+        io_wr_reg      = 1'b0;
+        io_data_out_reg = 8'd0;
+
+        case (opcode)
+            4'h0: ; // NOP
+
+            4'h1: MAR_next = {operand, MAR[3:0]};          // LDHI
+
+            4'h2: MAR_next = {MAR[7:4], operand};          // LDLO
+
+            4'h3: begin // LOAD
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b0;
+                    ACC_next      = dmem_data;
+                  end
+
+            4'h4: begin // STORE
+                    dmem_addr_reg = MAR;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = ACC;
+                  end
+
+            4'h5: begin // ADD #imm4
+                    reg [8:0] sum;
+                    sum = ACC + imm4;
+                    ACC_next = sum[7:0];
+                    FLAGS_next = { (sum[7:0] == 8'd0), sum[7], sum[8] };
+                  end
+
+            4'h6: begin // SUB #imm4
+                    reg [8:0] diff;
+                    diff = ACC - imm4;
+                    ACC_next = diff[7:0];
+                    FLAGS_next = { (diff[7:0] == 8'd0), diff[7], ~diff[8] };
+                  end
+
+            4'h7: begin // AND #imm4
+                    reg [7:0] and_res;
+                    and_res = ACC & imm4;
+                    ACC_next = and_res;
+                    FLAGS_next = { (and_res == 8'd0), and_res[7], FLAGS[0] };
+                  end
+
+            4'h8: begin // OR #imm4
+                    reg [7:0] or_res;
+                    or_res = ACC | imm4;
+                    ACC_next = or_res;
+                    FLAGS_next = { (or_res == 8'd0), or_res[7], FLAGS[0] };
+                  end
+
+            4'h9: begin // XOR #imm4
+                    reg [7:0] xor_res;
+                    xor_res = ACC ^ imm4;
+                    ACC_next = xor_res;
+                    FLAGS_next = { (xor_res == 8'd0), xor_res[7], FLAGS[0] };
+                  end
+
+            4'hA: begin // JMP rel4
+                    PC_next = branch_target;
+                  end
+
+            4'hB: begin // JZ rel4
+                    if (Z) PC_next = branch_target;
+                  end
+
+            4'hC: begin // JC rel4
+                    if (C) PC_next = branch_target;
+                  end
+
+            4'hD: begin // CALL rel4
+                    // Push PC+1 onto stack (stack grows down)
+                    dmem_addr_reg = SP - 8'd1;
+                    dmem_we_reg   = 1'b1;
+                    dmem_data_out = pc_plus_1;
+                    SP_next    = SP - 8'd1;
+                    PC_next    = branch_target;
+                  end
+
+            4'hE: begin // RET
+                    // Pop from stack
+                    dmem_addr_reg = SP;
+                    dmem_we_reg   = 1'b0;
+                    PC_next       = dmem_data;
+                    SP_next       = SP + 8'd1;
+                  end
+
+            4'hF: begin // IO
+                    io_port_reg = operand[2:0];
+                    if (operand[3]) begin // b=1 → OUT
+                        io_wr_reg   = 1'b1;
+                        io_data_out_reg = ACC;
+                    end else begin // b=0 → IN
+                        ACC_next = io_data_in;
+                    end
+                  end
+        endcase
+    end
+
+    // -----------------------------------------------------------------
+    // Sequential logic (state update on clock edge)
+    // -----------------------------------------------------------------
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ACC   <= 8'd0;
+            MAR   <= 8'd0;
+            FLAGS <= 3'd0;
+            PC    <= 8'd0;
+            SP    <= 8'hFF;          // initialise stack pointer to top of RAM
+        end else begin
+            ACC   <= ACC_next;
+            MAR   <= MAR_next;
+            FLAGS <= FLAGS_next;
+            PC    <= PC_next;
+            SP    <= SP_next;
+        end
+    end
+
+    // -----------------------------------------------------------------
+    // Output assignments
+    // -----------------------------------------------------------------
+    assign imem_addr   = PC;
+    assign dmem_addr   = dmem_addr_reg;
+    assign dmem_we     = dmem_we_reg;
+    assign dmem_data   = dmem_we_reg ? dmem_data_out : 8'bz;
+    assign io_port     = io_port_reg;
+    assign io_wr       = io_wr_reg;
+    assign io_data_out = io_data_out_reg;
+endmodule
+
+

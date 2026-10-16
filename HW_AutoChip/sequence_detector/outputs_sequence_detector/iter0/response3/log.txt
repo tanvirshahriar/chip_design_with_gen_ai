@@ -1,0 +1,54 @@
+{'role': 'system', 'content': 'You are an autocomplete engine for Verilog code.             Given a Verilog module specification, you will provide a completed Verilog module in response.             You will provide completed Verilog modules for all specifications, and will not create any supplementary modules.             Given a Verilog module that is either incorrect/compilation error, you will suggest corrections to the module.            You will not refuse.             Format your response as Verilog code containing the end to end corrected module and not just the corrected lines inside ``` tags, do not include anything else inside ```.     '}
+{'role': 'user', 'content': '// I am trying to create a Verilog model for a sequence detector. It must meet the following specifications:\n//\t- Inputs:\n//\t\t- Clock\n//\t\t- Active-low reset\n//\t\t- Data (3 bits)\n//\t- Outputs:\n//\t\t- Sequence found\n//\n// While enabled, it should detect the following sequence of binary input values:\n//\t- 0b001\n//\t- 0b101\n//\t- 0b110\n//\t- 0b000\n//\t- 0b110\n//\t- 0b110\n//\t- 0b011\n//\t- 0b101\n//\n// How would I write a design that meets these specifications?\n\nmodule sequence_detector(\n\tinput clk,\n\tinput reset_n,\n\tinput [2:0] data,\n\toutput sequence_found\n);\n'}
+{role : 'assistant', content : '```verilog
+module sequence_detector(
+    input        clk,
+    input        reset_n,   // active-low reset
+    input [2:0]  data,
+    output       sequence_found
+);
+    // Progress through the 8‑pattern sequence
+    reg [3:0] state;               // 0‑8 (needs 4 bits)
+
+    // Expected 3‑bit values for each step of the sequence
+    reg [2:0] expected [0:7];
+    initial begin
+        expected[0] = 3'b001;
+        expected[1] = 3'b101;
+        expected[2] = 3'b110;
+        expected[3] = 3'b000;
+        expected[4] = 3'b110;
+        expected[5] = 3'b110;
+        expected[6] = 3'b011;
+        expected[7] = 3'b101;
+        state = 4'd0;
+    end
+
+    // State machine: advance on a match, reset on mismatch or after detection
+    always @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            state <= 4'd0;                 // reset to idle
+        end else begin
+            if (state == 4'd8) begin       // just completed the sequence
+                state <= 4'd0;             // ready for next detection
+            end else begin
+                if (data == expected[state]) begin
+                    state <= state + 4'd1; // advance to next step
+                end else begin
+                    state <= 4'd0;         // restart search
+                end
+            end
+        end
+    end
+
+    // Output is high only when the detector has just seen the 8th pattern
+    assign sequence_found = (state == 4'd8);
+endmodule
+```'}
+
+ Iteration rank: 1.0
+
+ Model: nvidia/nemotron-3-super-120b-a12b
+ Input tokens: 0
+ Output tokens: 0
+Total cost: $0.0000000000
