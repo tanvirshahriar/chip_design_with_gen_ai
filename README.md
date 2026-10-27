@@ -15,9 +15,6 @@ Icarus Verilog (`iverilog` / `vvp`) for simulation.
 | [`HW_AutoChip`](HW_AutoChip) | Automated generate–simulate–feedback loop (AutoChip) for the same eight designs and a co-designed 8-bit CPU | [AutoChip_Report.pdf](HW_AutoChip/AutoChip_Report.pdf) |
 | [`HW_ROME_Coverage`](HW_ROME_Coverage) | Hierarchical RTL generation (ROME) for a mux hierarchy and a `half_adder → adder8` hierarchy, with iVerilog + Covered coverage-guided testbench refinement | [ROME_Report.pdf](HW_ROME_Coverage/ROME_Report.pdf) |
 
-The eight benchmark designs: `binary_to_bcd`, `sequence_detector`, `shift_register`, `abro_state_machine`,
-`dice_roller`, `lfsr`, `sequence_generator`, `traffic_light`.
-
 ## Running a notebook
 
 1. Open the notebook in Google Colab.
