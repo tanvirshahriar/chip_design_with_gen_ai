@@ -1,0 +1,3 @@
+module mux8_1(input [2:0] sel, input [7:0] in, output out);
+    assign out = in[sel];
+endmodule

@@ -1,0 +1,4 @@
+VCD info: dumpfile ./coverage/refine_1/raw.vcd opened for output.
+Total tests: 19
+All tests passed!
+./coverage/refine_1/tb_with_dump.v:61: $finish called at 19000 (1ps)

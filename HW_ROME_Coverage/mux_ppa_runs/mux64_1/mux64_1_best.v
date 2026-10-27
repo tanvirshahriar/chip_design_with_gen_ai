@@ -1,0 +1,11 @@
+module mux64_1 (
+    input  wire [5:0]  sel,
+    input  wire [63:0] in,
+    output reg         out
+);
+
+always @* begin
+    out = in[sel];
+end
+
+endmodule

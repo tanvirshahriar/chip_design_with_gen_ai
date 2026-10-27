@@ -1,0 +1,12 @@
+read_verilog "./mux_ppa_runs/mux64_1/mux64_1__combined.v"
+hierarchy -check -top mux64_1
+proc
+opt
+memory
+opt
+fsm
+opt
+techmap
+opt
+clean
+tee -o "./mux_ppa_runs/mux64_1/iter_002_ppa/ppa_stat.txt" stat -top mux64_1 -tech cmos

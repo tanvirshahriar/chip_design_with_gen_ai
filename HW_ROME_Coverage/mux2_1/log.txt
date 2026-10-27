@@ -1,0 +1,83 @@
+system: You are an autocomplete engine for Verilog code. Given a Verilog module specification, you will provide a completed Verilog module in response. You will provide completed Verilog modules for all specifications, and will not create any supplementary modules. Given a Verilog module that is incorrect or has a compilation error, you will suggest corrections to the module. You will not refuse. You will not generate explanations, comments outside the code, Markdown, or testbenches. IMPORTANT: Output ONLY the Verilog code for the requested module. Do NOT repeat any previous modules. Do NOT wrap the code in triple backticks. Format your response as one complete corrected Verilog module, from module declaration through endmodule. Use Verilog-2001 only unless explicitly told otherwise.
+user: The following is the testbench that will be used to compile/simulate your module. Do NOT generate a testbench or modify it. Only use it to ensure your module compiles and passes.
+
+```verilog
+`timescale 1ns / 1ps
+
+module tb_mux2_1;
+
+    // Inputs
+    reg in1;
+    reg in2;
+    reg select;
+
+    // Output
+    wire out;
+
+    // Instantiate the Unit Under Test (UUT)
+    mux2_1 uut (
+        .in1(in1), 
+        .in2(in2), 
+        .select(select), 
+        .out(out)
+    );
+
+    // Test cases
+    integer i;
+    initial begin
+        // Initialize Inputs
+        in1 = 0;
+        in2 = 0;
+        select = 0;
+
+        // Add stimulus here
+        for (i = 0; i < 4; i = i + 1) begin
+            {in1, in2, select} = i;  // Apply test vectors
+            #10;  // Wait 10 time units
+
+            // Check the output and display the result
+            if ((select == 0 && out == in1) || (select == 1 && out == in2)) begin
+                $display("Test %d passed", i);
+            end else begin
+                $display("Test %d failed!", i);
+            end
+        end
+        
+        // Additional test case: inputs are the same but select toggles
+        in1 = 1; in2 = 1;
+        select = 0;  // First check with select 0
+        #10;
+        if (out == in1) begin
+            $display("Test 4 passed");
+        end else begin
+            $display("Test 4 failed!");
+        end
+        
+        select = 1;  // Now check with select 1
+        #10;
+        if (out == in2) begin
+            $display("Test 5 passed!");
+        end else begin
+            $display("Test 5 failed!");
+        end
+
+        $finish;  // Terminate simulation
+    end
+endmodule
+
+
+```
+
+user: // We will be generating a 64-to-1 multiplexer hierarchically in Verilog.
+// IMPORTANT: Output ONLY the module requested below.
+// Do NOT generate any previous modules, future modules, explanations, or testbenches.
+// Use Verilog-2001 only.
+// Begin by generating: 2-to-1 multiplexer
+
+module mux2_1(input wire in1, input wire in2, input wire select, output wire out);
+// Insert code here
+endmodule
+
+assistant: module mux2_1(input wire in1, input wire in2, input wire select, output wire out);
+    assign out = select ? in2 : in1;
+endmodule

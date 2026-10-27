@@ -1,0 +1,3 @@
+Total tests: 8
+All tests passed!
+./testbenches/full_adder_tb.v:27: $finish called at 8000 (1ps)

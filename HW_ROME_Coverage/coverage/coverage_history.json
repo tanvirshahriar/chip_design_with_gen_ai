@@ -1,0 +1,35 @@
+[
+  {
+    "iteration": "baseline",
+    "changed": "none",
+    "tb": "./testbenches/tb_baseline.v",
+    "tests": 8,
+    "line": "100",
+    "toggle_0to1": "79",
+    "toggle_1to0": "69",
+    "logic": "72",
+    "sim": "PASS"
+  },
+  {
+    "iteration": "refine_1",
+    "changed": "TB",
+    "tb": "./testbenches/tb_iter_1.v",
+    "tests": 19,
+    "line": "100",
+    "toggle_0to1": "100",
+    "toggle_1to0": "100",
+    "logic": "98",
+    "sim": "PASS"
+  },
+  {
+    "iteration": "refine_2",
+    "changed": "TB",
+    "tb": "./testbenches/tb_iter_2.v",
+    "tests": 21,
+    "line": "100",
+    "toggle_0to1": "100",
+    "toggle_1to0": "100",
+    "logic": "99",
+    "sim": "PASS"
+  }
+]

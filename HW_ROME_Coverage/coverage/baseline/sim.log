@@ -1,0 +1,4 @@
+VCD info: dumpfile ./coverage/baseline/raw.vcd opened for output.
+Total tests: 8
+All tests passed!
+./coverage/baseline/tb_with_dump.v:48: $finish called at 8000 (1ps)

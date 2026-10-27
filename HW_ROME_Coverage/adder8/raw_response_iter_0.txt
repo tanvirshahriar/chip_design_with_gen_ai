@@ -1,0 +1,30 @@
+module adder8(
+  input  wire [7:0] a,
+  input  wire [7:0] b,
+  input  wire       cin,
+  output wire [7:0] sum,
+  output wire       cout
+);
+
+  wire [3:0] sum_low, sum_high;
+  wire       carry_low;
+
+  adder4 u_adder4_low (
+    .a    (a[3:0]),
+    .b    (b[3:0]),
+    .cin  (cin),
+    .sum  (sum_low),
+    .cout (carry_low)
+  );
+
+  adder4 u_adder4_high (
+    .a    (a[7:4]),
+    .b    (b[7:4]),
+    .cin  (carry_low),
+    .sum  (sum_high),
+    .cout (cout)
+  );
+
+  assign sum = {sum_high, sum_low};
+
+endmodule

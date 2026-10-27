@@ -1,0 +1,7 @@
+module mux8_1(input [2:0] sel, input [7:0] in, output reg out);
+    wire [3:0] in_low = in[3:0];
+    wire [3:0] in_high = in[7:4];
+    wire mux4_low = in_low[sel[1:0]];
+    wire mux4_high = in_high[sel[1:0]];
+    always @* out = sel[2] ? mux4_high : mux4_low;
+endmodule

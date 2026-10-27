@@ -1,0 +1,20 @@
+module mux16_1(input [3:0] sel, input [15:0] in, output reg out);
+    wire [7:0] level1;
+    wire [3:0] level2;
+    wire [1:0] level3;
+
+    genvar i;
+    generate
+        for (i = 0; i < 8; i = i + 1) begin : gen_level1
+            assign level1[i] = sel[0] ? in[2*i+1] : in[2*i];
+        end
+        for (i = 0; i < 4; i = i + 1) begin : gen_level2
+            assign level2[i] = sel[1] ? level1[2*i+1] : level1[2*i];
+        end
+        for (i = 0; i < 2; i = i + 1) begin : gen_level3
+            assign level3[i] = sel[2] ? level2[2*i+1] : level2[2*i];
+        end
+    endgenerate
+
+    always @(*) out = sel[3] ? level3[1] : level3[0];
+endmodule

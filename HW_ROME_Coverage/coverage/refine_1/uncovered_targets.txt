@@ -1,0 +1,23 @@
+* Report generated from CDD file : ./coverage/refine_1/adder8.cdd
+* Reported by                    : Instance
+    Module: half_adder, File: ./coverage/refine_1/rtl.v, Instance: tb_adder8.dut.u_adder4_high.fa2.ha1
+    Missed Combinations  (* = missed value)
+      =========================================================================================================
+      =========================================================================================================
+              2:    assign sum =  a  ^  b
+        =00=|=01=|=10=|=11=
+              *
+    Module: half_adder, File: ./coverage/refine_1/rtl.v, Instance: tb_adder8.dut.u_adder4_high.fa3.ha1
+    Missed Combinations  (* = missed value)
+      =========================================================================================================
+      =========================================================================================================
+              2:    assign sum =  a  ^  b
+        =00=|=01=|=10=|=11=
+              *
+    Module: half_adder, File: ./coverage/refine_1/rtl.v, Instance: tb_adder8.dut.u_adder4_high.fa3.ha2
+    Missed Combinations  (* = missed value)
+      =========================================================================================================
+      =========================================================================================================
+              2:    assign sum =  a  ^  b
+        =00=|=01=|=10=|=11=
+                   *

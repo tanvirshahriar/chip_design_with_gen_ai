@@ -1,0 +1,84 @@
+system: You are an autocomplete engine for Verilog code. Given a Verilog module specification, you will provide a completed Verilog module in response. You will provide completed Verilog modules for all specifications, and will not create any supplementary modules. Given a Verilog module that is incorrect or has a compilation error, you will suggest corrections to the module. You will not refuse. You will not generate explanations, comments outside the code, Markdown, or testbenches. IMPORTANT: Output ONLY the Verilog code for the requested module. Do NOT repeat any previous modules. Do NOT wrap the code in triple backticks. Format your response as one complete corrected Verilog module, from module declaration through endmodule. Use Verilog-2001 only unless explicitly told otherwise.
+user: The following is the testbench that will be used to compile/simulate your module. Do NOT generate a testbench or modify it. Only use it to ensure your module compiles and passes.
+
+```verilog
+`timescale 1ns / 1ps
+
+module testbench;
+
+// Testbench signals
+reg [4:0] sel;
+reg [31:0] in;
+wire out;
+
+// Instantiate the mux32_1 module
+mux32_1 uut (
+    .sel(sel),
+    .in(in),
+    .out(out)
+);
+
+// Test procedure
+initial begin
+    // Initialize inputs
+    sel = 0;
+    in = 32'hCAFEBABE; // Example input pattern, hexadecimal for clarity
+
+    // Test cases for each select signal
+    #10 sel = 5'b00000; // Test 0
+    #10 if (out == in[0]) $display("Test 0 passed");
+
+    // Continue with similar pattern
+    repeat (30) begin
+        #10 sel = sel + 1; // Increment select to test next input
+        #10 if (out == in[sel]) $display("Test %d passed", sel);
+    end
+    
+    #10 sel = 5'b00001; 
+    #10 if (out == in[1]) $display("Final test passed!");
+
+    // End of tests
+    #10 $finish;
+end
+
+endmodule
+
+
+```
+
+user: // We are generating a 64-to-1 multiplexer hierarchically in Verilog.
+// Use Verilog-2001 only.
+
+// Previously generated modules are shown below for reference only.
+// You may instantiate them, but you must NOT repeat their definitions.
+
+// File: ./mux2_1/mux2_1.v
+module mux2_1(input wire in1, input wire in2, input wire select, output wire out);
+endmodule
+
+// File: ./mux4_1/mux4_1.v
+module mux4_1(input [1:0] sel, input [3:0] in, output out);
+endmodule
+
+// File: ./mux8_1/mux8_1.v
+module mux8_1(input [2:0] sel, input [7:0] in, output out);
+endmodule
+
+// File: ./mux16_1/mux16_1.v
+module mux16_1(input [3:0] sel, input [15:0] in, output out);
+endmodule
+
+// IMPORTANT: Output ONLY the new module requested below.
+// Do NOT repeat any previous modules.
+// Do NOT generate explanations, Markdown fences, or a testbench.
+// Now generate: 32-to-1 multiplexer
+
+module mux32_1(input [4:0] sel, input [31:0] in, output reg out);
+// Insert code here
+endmodule
+
+assistant: module mux32_1(input [4:0] sel, input [31:0] in, output reg out);
+    always @(*) begin
+        out = in[sel];
+    end
+endmodule

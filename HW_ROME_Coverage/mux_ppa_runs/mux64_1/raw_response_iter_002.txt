@@ -1,0 +1,37 @@
+module mux64_1 (
+    input  wire [5:0]  sel,
+    input  wire [63:0] in,
+    output reg         out
+);
+
+wire [63:0] level0 = in;
+wire [31:0] level1;
+wire [15:0] level2;
+wire [7:0]  level3;
+wire [3:0]  level4;
+wire [1:0]  level5;
+wire        level6;
+
+genvar i;
+generate
+    for (i = 0; i < 32; i = i + 1) begin : g_level1
+        assign level1[i] = sel[0] ? level0[2*i+1] : level0[2*i];
+    end
+    for (i = 0; i < 16; i = i + 1) begin : g_level2
+        assign level2[i] = sel[1] ? level1[2*i+1] : level1[2*i];
+    end
+    for (i = 0; i < 8; i = i + 1) begin : g_level3
+        assign level3[i] = sel[2] ? level2[2*i+1] : level2[2*i];
+    end
+    for (i = 0; i < 4; i = i + 1) begin : g_level4
+        assign level4[i] = sel[3] ? level3[2*i+1] : level3[2*i];
+    end
+    for (i = 0; i < 2; i = i + 1) begin : g_level5
+        assign level5[i] = sel[4] ? level4[2*i+1] : level4[2*i];
+    end
+    assign level6 = sel[5] ? level5[1] : level5[0];
+endgenerate
+
+always @* out = level6;
+
+endmodule

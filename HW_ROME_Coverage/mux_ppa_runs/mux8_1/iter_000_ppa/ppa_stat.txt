@@ -1,0 +1,18 @@
+
+11. Printing statistics.
+
+=== mux8_1 ===
+
+        +----------Local Count, excluding submodules.
+        | 
+        5 wires
+       28 wire bits
+        3 public wires
+       12 public wire bits
+        3 ports
+       12 port bits
+        7 cells
+        7   $_MUX_
+
+   Estimated number of transistors:         84
+

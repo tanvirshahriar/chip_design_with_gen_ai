@@ -1,0 +1,3 @@
+module mux16_1(input [3:0] sel, input [15:0] in, output reg out);
+    always @(*) out = in[sel];
+endmodule

@@ -1,0 +1,93 @@
+system: You are an autocomplete engine for Verilog code. Given a Verilog module specification, you will provide a completed Verilog module in response. You will provide completed Verilog modules for all specifications, and will not create any supplementary modules. Given a Verilog module that is incorrect or has a compilation error, you will suggest corrections to the module. You will not refuse. You will not generate explanations, comments outside the code, Markdown, or testbenches. IMPORTANT: Output ONLY the Verilog code for the requested module. Do NOT repeat any previous modules. Do NOT wrap the code in triple backticks. Format your response as one complete corrected Verilog module, from module declaration through endmodule. Use Verilog-2001 only unless explicitly told otherwise.
+user: The following is the testbench that will be used to compile/simulate your module. Do NOT generate a testbench or modify it. Only use it to ensure your module compiles and passes.
+
+```verilog
+`timescale 1ns / 1ps
+
+module testbench;
+
+// Testbench signals
+reg [2:0] sel;
+reg [7:0] in;
+wire out;
+
+// Instantiate the mux8_1 module
+mux8_1 uut (
+    .sel(sel),
+    .in(in),
+    .out(out)
+);
+
+// Test procedure
+initial begin
+    // Initialize inputs
+    sel = 0;
+    in = 8'b1100_1010; // Example input pattern
+
+    // Test 0: sel = 000, expected output: in[0]
+    #10 sel = 3'b000;
+    #10 if (out == in[0]) $display("Test 0 passed");
+
+    // Test 1: sel = 001, expected output: in[1]
+    #10 sel = 3'b001;
+    #10 if (out == in[1]) $display("Test 1 passed");
+
+    // Test 2: sel = 010, expected output: in[2]
+    #10 sel = 3'b010;
+    #10 if (out == in[2]) $display("Test 2 passed");
+
+    // Test 3: sel = 011, expected output: in[3]
+    #10 sel = 3'b011;
+    #10 if (out == in[3]) $display("Test 3 passed");
+
+    // Test 4: sel = 100, expected output: in[4]
+    #10 sel = 3'b100;
+    #10 if (out == in[4]) $display("Test 4 passed");
+
+    // Test 5: sel = 101, expected output: in[5]
+    #10 sel = 3'b101;
+    #10 if (out == in[5]) $display("Test 5 passed");
+
+    // Test 6: sel = 110, expected output: in[6]
+    #10 sel = 3'b110;
+    #10 if (out == in[6]) $display("Test 6 passed");
+
+    // Test 7: sel = 111, expected output: in[7]
+    #10 sel = 3'b111;
+    #10 if (out == in[7]) $display("Test 7 passed!");
+
+    // End of tests
+    #10 $finish;
+end
+
+endmodule
+
+
+```
+
+user: // We are generating a 64-to-1 multiplexer hierarchically in Verilog.
+// Use Verilog-2001 only.
+
+// Previously generated modules are shown below for reference only.
+// You may instantiate them, but you must NOT repeat their definitions.
+
+// File: ./mux2_1/mux2_1.v
+module mux2_1(input wire in1, input wire in2, input wire select, output wire out);
+endmodule
+
+// File: ./mux4_1/mux4_1.v
+module mux4_1(input [1:0] sel, input [3:0] in, output out);
+endmodule
+
+// IMPORTANT: Output ONLY the new module requested below.
+// Do NOT repeat any previous modules.
+// Do NOT generate explanations, Markdown fences, or a testbench.
+// Now generate: 8-to-1 multiplexer
+
+module mux8_1(input [2:0] sel, input [7:0] in, output reg out);
+// Insert code here
+endmodule
+
+assistant: module mux8_1(input [2:0] sel, input [7:0] in, output out);
+    assign out = in[sel];
+endmodule

@@ -1,0 +1,7 @@
+Test           0 passed
+Test           1 passed
+Test           2 passed
+Test           3 passed
+Test 4 passed
+Test 5 passed!
+./mux2_1tb.v:60: $finish called at 60000 (1ps)

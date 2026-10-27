@@ -1,0 +1,24 @@
+module mux32_1(input [4:0] sel, input [31:0] in, output reg out);
+    wire [15:0] l1;
+    wire [7:0] l2;
+    wire [3:0] l3;
+    wire [1:0] l4;
+    wire out_wire;
+    genvar i;
+    generate
+        for (i = 0; i < 16; i = i + 1) begin : g_l1
+            assign l1[i] = sel[0] ? in[2*i+1] : in[2*i];
+        end
+        for (i = 0; i < 8; i = i + 1) begin : g_l2
+            assign l2[i] = sel[1] ? l1[2*i+1] : l1[2*i];
+        end
+        for (i = 0; i < 4; i = i + 1) begin : g_l3
+            assign l3[i] = sel[2] ? l2[2*i+1] : l2[2*i];
+        end
+        for (i = 0; i < 2; i = i + 1) begin : g_l4
+            assign l4[i] = sel[3] ? l3[2*i+1] : l3[2*i];
+        end
+        assign out_wire = sel[4] ? l4[1] : l4[0];
+    endgenerate
+    always @(*) out = out_wire;
+endmodule

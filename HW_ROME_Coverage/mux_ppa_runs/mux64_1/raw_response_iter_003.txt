@@ -1,0 +1,24 @@
+module mux64_1 (
+    input  wire [5:0]  sel,
+    input  wire [63:0] in,
+    output reg         out
+);
+
+wire [15:0] stage1;
+wire [3:0]  stage2;
+
+genvar i;
+generate
+    for (i = 0; i < 16; i = i + 1) begin : g_stage1
+        assign stage1[i] = in[i*4 + sel[1:0]];
+    end
+    for (i = 0; i < 4; i = i + 1) begin : g_stage2
+        assign stage2[i] = stage1[i*4 + sel[3:2]];
+    end
+endgenerate
+
+always @* begin
+    out = stage2[sel[5:4]];
+end
+
+endmodule

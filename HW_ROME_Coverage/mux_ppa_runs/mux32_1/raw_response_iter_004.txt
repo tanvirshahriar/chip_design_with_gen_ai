@@ -1,0 +1,3 @@
+module mux32_1(input [4:0] sel, input [31:0] in, output out);
+    assign out = in[sel];
+endmodule
