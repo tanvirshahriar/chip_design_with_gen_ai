@@ -1,6 +1,13 @@
 [
   {
     "op": "enc",
+    "in": "59C359C3"
+  },
+  {
+    "op": "read"
+  },
+  {
+    "op": "enc",
     "in": "DEADBEEF"
   }
 ]
