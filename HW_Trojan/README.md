@@ -16,14 +16,15 @@
 
 ```
 README.md                  this technical brief
+trojangen_hw.ipynb         the one-click pipeline (reverse-engineered model -> Trojan -> exploit -> verify)
 rtl/
   les_crypto_clean.v       clean RTL recovered from the bitstream (golden reference)
   les_crypto_trojan.v      AI-generated Trojaned module
 tb/
   exploit_tb.v             AI-generated exploit testbench (proves normal op + trigger, dumps exploit.vcd)
   activation_recipe.json   AI-declared steps to fire the trigger
+  exploit.vcd              waveform from the exploit run
 ai/
-  pipeline.ipynb           the one-click pipeline (reverse-engineered model -> Trojan -> exploit -> verify)
   logs/                    every LLM prompt + response (required; do not delete)
 docs/
   recovered_cipher.md      full cipher recovery write-up
@@ -65,7 +66,7 @@ Validation: `enc(0x59C359C3) = 0x9CD84392` (matches the shipped KAT), `dec(0x9CD
 
 ## 3. AI methods — the pipeline
 
-The whole attack is driven by a single logged notebook, `ai/pipeline.ipynb`, run top to bottom:
+The whole attack is driven by a single logged notebook, `trojangen_hw.ipynb`, run top to bottom:
 
 1. **Golden model.** The recovered cipher is implemented in Python and used to score generated RTL. It emits the clean reference module so the notebook is self-contained.
 2. **Oracle.** Icarus Verilog plus a protocol-accurate stealth testbench (the KAT + 16 random vectors) checks that any generated design still behaves like the real cipher on normal inputs.
@@ -100,6 +101,6 @@ To exploit on hardware: speak the standard SPI sequence (reset → shift in 32 b
 
 ## 6. Reproduce
 
-1. Open `ai/pipeline.ipynb` in Google Colab (or Jupyter).
+1. Open `trojangen_hw.ipynb` in Google Colab (or Jupyter).
 2. Run top to bottom. It installs `openai` + `iverilog`, asks once for an NVIDIA API key (`getpass`, never written to disk), rebuilds the clean RTL, and runs the generation + verification loop.
 3. Outputs land in `rtl/`, `tb/`, and `ai/logs/`. The final cell prints the converged Trojan and saves all three artifacts.
